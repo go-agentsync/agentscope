@@ -83,7 +83,7 @@ func (d *cdp) call(ctx context.Context, sess, method string, params any) (json.R
 	}
 }
 
-func run(ctx context.Context, chrome, url, out string, wait time.Duration, scroll, w, h int) error {
+func run(ctx context.Context, chrome, url, out string, wait time.Duration, scroll, w, h int, click string) error {
 	if in, err := insideGitTree(out); err != nil || in {
 		return fmt.Errorf("refusing to write a capture inside a git work tree (%s): %v", out, err)
 	}
@@ -154,6 +154,18 @@ func run(ctx context.Context, chrome, url, out string, wait time.Duration, scrol
 		return err
 	}
 	time.Sleep(wait)
+	if click != "" {
+		var x, y int
+		if _, err := fmt.Sscanf(click, "%d,%d", &x, &y); err != nil {
+			return fmt.Errorf("-click wants x,y: %v", err)
+		}
+		for _, typ := range []string{"mousePressed", "mouseReleased"} {
+			if _, err := d.call(ctx, s, "Input.dispatchMouseEvent", map[string]any{"type": typ, "x": x, "y": y, "button": "left", "clickCount": 1}); err != nil {
+				return err
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 	for i := 0; i < scroll; i++ {
 		// Wheel over the graph (left part of the page).
 		if _, err := d.call(ctx, s, "Input.dispatchMouseEvent", map[string]any{"type": "mouseWheel", "x": 300, "y": 300, "deltaX": 0, "deltaY": 120}); err != nil {
@@ -190,6 +202,7 @@ func main() {
 	out := flag.String("out", "", "the PNG to write (outside any git work tree)")
 	wait := flag.Duration("wait", 6*time.Second, "how long the page gets before the capture")
 	scroll := flag.Int("scroll", 0, "wheel steps over the graph before the capture")
+	click := flag.String("click", "", "x,y of a click (e.g. a node) before the capture")
 	w := flag.Int("w", 1680, "window width")
 	h := flag.Int("h", 960, "window height")
 	flag.Parse()
@@ -199,7 +212,7 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	if err := run(ctx, *chrome, *url, *out, *wait, *scroll, *w, *h); err != nil {
+	if err := run(ctx, *chrome, *url, *out, *wait, *scroll, *w, *h, *click); err != nil {
 		fmt.Fprintln(os.Stderr, "capture:", err)
 		os.Exit(1)
 	}

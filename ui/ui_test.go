@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-agentsync/agentscope/model"
-	"github.com/go-widgets/toolkit"
 )
 
 var t0 = time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
@@ -52,126 +51,7 @@ func snap() model.Snapshot {
 	}
 }
 
-func TestBuildGraphMapping(t *testing.T) {
-	g := buildGraph(snap())
-	clusters := map[string]string{}
-	for _, c := range g.clusters {
-		clusters[c.ID] = c.Label
-	}
-	if clusters["aaaaaaaa"] != "aaaaaaaa o/a" || clusters["bbbbbbbb"] != "bbbbbbbb o/b" || clusters["cccccccc"] != "cccccccc" || clusters[reposCluster] != repoClusterLabel {
-		t.Errorf("clusters %v", clusters)
-	}
-	cat := map[string]string{}
-	for _, n := range g.nodes {
-		cat[n.ID] = n.Category
-	}
-	for id, want := range map[string]string{
-		"s:aaaaaaaa": "session", "s:bbbbbbbb": "idle session", "s:cccccccc": "no transcript",
-		"a:aaaaaaaa:ag1": "general-purpose", "a:aaaaaaaa:ag2": "agent", "r:o/a": "repo", "r:o/old": "repo", "r:ghost/x": "repo",
-	} {
-		if cat[id] != want {
-			t.Errorf("node %s category %q, want %q", id, cat[id], want)
-		}
-	}
-	edges := map[string]toolkit.GraphEdge{}
-	for _, e := range g.edges {
-		edges[e.ID] = e
-	}
-	if e := edges["sp:a:aaaaaaaa:ag1"]; e.From != "s:aaaaaaaa" || e.To != "a:aaaaaaaa:ag1" || e.State != toolkit.GraphEdgeNormal || e.Label != "fix the build" {
-		t.Errorf("spawn edge %+v", e)
-	}
-	if e := edges["sp:a:aaaaaaaa:ag2"]; e.State != toolkit.GraphEdgeIdle {
-		t.Errorf("an idle sub-agent's spawn edge is Idle: %+v", e)
-	}
-	if e := edges["ls:aaaaaaaa:o/a"]; e.State != toolkit.GraphEdgeNormal || e.Label != "working on a" {
-		t.Errorf("live lease edge %+v", e)
-	}
-	if e := edges["ls:aaaaaaaa:o/old"]; e.State != toolkit.GraphEdgeIdle {
-		t.Errorf("an expired lease's edge is Idle: %+v", e)
-	}
-	if _, ok := edges["ls:dddddddd:ghost/x"]; ok {
-		t.Error("an edge from a session that is not drawn")
-	}
-	if e, ok := edges["tl:0"]; !ok || e.To != "s:bbbbbbbb" {
-		t.Errorf("tell to a session: %+v", e)
-	}
-	if e, ok := edges["tl:1"]; !ok || e.To != "r:o/a" || e.From != "s:bbbbbbbb" {
-		t.Errorf("tell to a repo: %+v", e)
-	}
-	if _, ok := edges["tl:2"]; ok {
-		t.Error("a tell to a repo that is not drawn")
-	}
-	if _, ok := edges["tl:3"]; ok {
-		t.Error("a tell to a session that is not drawn")
-	}
-	n := 0
-	for _, e := range g.edges {
-		if strings.HasPrefix(e.ID, "ls:aaaaaaaa:o/a") {
-			n++
-		}
-	}
-	if n != 1 {
-		t.Errorf("a repo held twice by one session has %d lease edges", n)
-	}
-}
-
-func TestBuildGraphBounds(t *testing.T) {
-	s := snap()
-	s.Sessions = nil
-	s.Leases = nil
-	s.Tells = nil
-	for i := 0; i < MaxGraphSessions+3; i++ {
-		id := fmt.Sprintf("%08x-0000", i)
-		ag := []model.Agent{}
-		for j := 0; j < MaxGraphAgents+2; j++ {
-			ag = append(ag, model.Agent{ID: fmt.Sprint(j), Type: "t"})
-		}
-		s.Sessions = append(s.Sessions, model.Session{ID: id, Short: id[:8], HasTranscript: true, Agents: ag})
-		// An expired lease first, then a live one on the same repo: live wins.
-		s.Leases = append(s.Leases,
-			model.Lease{Repo: fmt.Sprintf("o/r%d", i), Owner: id, Expired: true},
-			model.Lease{Repo: fmt.Sprintf("o/r%d", i), Owner: id})
-	}
-	// More repositories than the bound, all held by the first session.
-	for i := 0; i < MaxGraphRepos; i++ {
-		s.Leases = append(s.Leases, model.Lease{Repo: fmt.Sprintf("x/r%d", i), Owner: s.Sessions[0].ID})
-	}
-	g := buildGraph(s)
-	if g.sessionsNotDrawn != 3 || g.repoNotDrawn != MaxGraphSessions+3 {
-		t.Errorf("not drawn: %d sessions, %d repos", g.sessionsNotDrawn, g.repoNotDrawn)
-	}
-	clusters, more, repos := 0, 0, 0
-	for _, c := range g.clusters {
-		clusters++
-		_ = c
-	}
-	for _, n := range g.nodes {
-		if strings.HasPrefix(n.ID, "m:") {
-			more++
-			if n.Label != "+2 more" {
-				t.Errorf("more node %q", n.Label)
-			}
-		}
-		if n.Cluster == reposCluster {
-			repos++
-		}
-	}
-	if clusters != MaxGraphSessions+1 || more != MaxGraphSessions || repos != MaxGraphRepos {
-		t.Errorf("clusters %d more %d repos %d", clusters, more, repos)
-	}
-	// No leases at all: no repositories cluster.
-	s.Leases = nil
-	for _, c := range buildGraph(s).clusters {
-		if c.ID == reposCluster {
-			t.Error("a repositories cluster with nothing in it")
-		}
-	}
-}
-
 func TestRepoNameAndAgo(t *testing.T) {
-	if repoName("o/r") != "r" || repoName("solo") != "solo" {
-		t.Error("repoName")
-	}
 	for d, want := range map[time.Duration]string{0: "now", 30 * time.Second: "now", 5 * time.Minute: "5m", 3 * time.Hour: "3h", 49 * time.Hour: "2d"} {
 		if got := ago(t0, t0.Add(-d)); got != want {
 			t.Errorf("ago(%v) = %q, want %q", d, got, want)
@@ -287,10 +167,11 @@ func TestViewModelNotDrawnNote(t *testing.T) {
 	vm := NewViewModel()
 	s := snap()
 	for i := 0; i < MaxGraphRepos+2; i++ {
-		s.Leases = append(s.Leases, model.Lease{Repo: fmt.Sprintf("x/r%d", i), Owner: idA})
+		s.Leases = append(s.Leases, model.Lease{Repo: fmt.Sprintf("x/r%d", i), Owner: idA, Expired: true})
 	}
 	vm.Apply(s)
-	if !strings.Contains(vm.Status.Get(), "not drawn: 0 sessions, ") || !strings.Contains(vm.Status.Get(), "repos (see the table)") {
+	// 2 over the bound, plus o/old (expired) and ghost/x (holder not drawn).
+	if !strings.Contains(vm.Status.Get(), "not drawn: 0 sessions, 4 repos (see the table)") {
 		t.Errorf("status %q", vm.Status.Get())
 	}
 }

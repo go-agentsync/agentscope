@@ -47,12 +47,19 @@ a file that shrank is read again and reported.
 
 | | |
 |---|---|
-| **cluster** | one per session (`<short id> <repo>`), and one "repositories" |
-| **node** | the session's main agent (orange = active, grey-orange = idle), its sub-agents (colour = agent type), a node per repository held |
-| **edge** | session to sub-agent (spawn, label = description), session to repository (lease, label = note; an expired lease is drawn **Idle**), sender to target (`tell`, label = text) |
+| **cluster** | one per session (`<short id> <repo>`), and one "other repositories" for repositories nobody holds |
+| **node** | the session's main agent (orange = active, yellow = idle), its sub-agents (**labelled by their task**, the `description` in their meta; coloured by agent type), and **every repository it holds, inside its own cluster**, so who holds what is where it sits. Repository labels are `org/repo`; when that does not fit the ORG is shortened and the repo kept whole |
+| **edge** | session to sub-agent (spawn), session to repository (lease), sender to target (`tell`) |
 | **table** | session, repository, task (live lease note, else title, else slug), last activity, #sub-agents |
 | **detail** | the selection's facts; with nothing selected, the **anomalies** |
 | **search** | dims the graph and narrows the table |
+
+**Focus.** With nothing selected only the edges of **active** sessions are drawn,
+and dimmed (an expired lease's edge is not drawn at all); tells are always in full,
+there are few and each is a message. Select a node and its edges are drawn in full
+while the rest stay dimmed; select a session and its whole cluster is in focus,
+expired leases included; select an edge to see it alone in full. Only edges change
+on a selection: no node moves.
 
 Click a node and its table row is selected, and the reverse. Each cluster is sized
 by its own members and the graph scrolls (wheel, scrollbar, arrow keys) when they

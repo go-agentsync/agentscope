@@ -174,20 +174,43 @@ func (l *lockedBuf) Write(p []byte) (int, error) {
 func (l *lockedBuf) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
 
 func TestServeServesUntilCancelled(t *testing.T) {
-	claude := tree(t)
 	web := t.TempDir()
 	os.WriteFile(filepath.Join(web, "index.html"), []byte("<html>ui</html>"), 0o644)
+	serveAndFetch(t, []string{"--web", web}, "ui", "")
+}
+
+// With no --web the UI is built on first run from this checkout into a clean
+// cache: a real go build for GOOS=js, then index.html and the wasm module are
+// served. Skipped in -short mode (it takes a while and needs the Go modules).
+func TestServeBuildsTheUIOnFirstRun(t *testing.T) {
+	if testing.Short() {
+		t.Skip("a real wasm build")
+	}
+	serveAndFetch(t, []string{"--cache-dir", t.TempDir()}, "agentscope", "app.wasm")
+}
+
+func TestServeWithoutGoNamesTheWayOut(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	_, _, err := run(t, "serve", "--claude-dir", tree(t), "--cache-dir", t.TempDir(), "--addr", "127.0.0.1:0")
+	if err == nil || !strings.Contains(err.Error(), "--web DIR") {
+		t.Fatalf("want an error naming --web DIR, got %v", err)
+	}
+}
+
+func serveAndFetch(t *testing.T, extra []string, want, wasm string) {
+	t.Helper()
+	claude := tree(t)
 	out := &lockedBuf{}
 	cmd := RootCmd()
 	cmd.SetOut(out)
 	cmd.SetErr(io.Discard)
-	cmd.SetArgs([]string{"serve", "--claude-dir", claude, "--localhost-root", "", "--github-root", "", "--web", web, "--addr", "127.0.0.1:0", "--interval", "500ms"})
+	cmd.SetArgs(append([]string{"serve", "--claude-dir", claude, "--localhost-root", "", "--github-root", "", "--addr", "127.0.0.1:0", "--interval", "500ms"}, extra...))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- cmd.ExecuteContext(ctx) }()
 
 	var url string
-	for i := 0; i < 200 && url == ""; i++ {
+	for i := 0; i < 8000 && url == ""; i++ { // up to 200 s: a first run builds the UI
 		if _, rest, ok := strings.Cut(out.String(), "serving "); ok {
 			url, _, _ = strings.Cut(rest, " ")
 		}
@@ -202,8 +225,19 @@ func TestServeServesUntilCancelled(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != 200 || !strings.Contains(string(body), "ui") {
+	if resp.StatusCode != 200 || !strings.Contains(string(body), want) {
 		t.Errorf("%d %q", resp.StatusCode, body)
+	}
+	if wasm != "" {
+		wr, err := http.Get(url + wasm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(wr.Body)
+		wr.Body.Close()
+		if wr.StatusCode != 200 || !strings.HasPrefix(string(b), "\x00asm") {
+			t.Errorf("%s: %d, %d bytes, not a wasm module", wasm, wr.StatusCode, len(b))
+		}
 	}
 	cancel()
 	select {

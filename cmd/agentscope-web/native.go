@@ -9,7 +9,7 @@ import "fmt"
 
 func banner() string {
 	return "agentscope-web is the browser half of agentscope (wasm).\n" +
-		"Build it with ./build.sh and serve it with `agentscope serve --web dist`."
+		"`agentscope serve` builds it on first run."
 }
 
 func main() { fmt.Println(banner()) }

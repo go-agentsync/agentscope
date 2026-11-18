@@ -56,6 +56,8 @@ func NewScene(w, h int) *Scene {
 	invalidate := func() { s.dirty = true }
 
 	s.search = toolkit.NewSearchEntry("")
+	// Without an Icon the entry draws "?" as a stand-in for the magnifier.
+	s.search.Icon = toolkit.DrawIconSearch
 	s.conn = toolkit.NewLabel("")
 	s.graph = toolkit.NewGraphView(vm.Graph)
 	s.graph.ShowLegend = true
@@ -80,7 +82,7 @@ func NewScene(w, h int) *Scene {
 		mvvmtk.BindLabel(s.status, vm.Status, invalidate),
 		mvvmtk.BindTableSelection(s.table, vm.TableSel, invalidate),
 		mvvmtk.BindListItems(s.detail, vm.Detail, func(l string) string { return l }, invalidate),
-		bindTableRows(s.table, vm.Rows, Row.Cells, invalidate),
+		mvvmtk.BindTableRows(s.table, vm.Rows, Row.Cells, invalidate),
 		vm.Graph.Selected.SubscribeChanged(invalidate),
 		vm.Graph.Filter.SubscribeChanged(invalidate),
 		vm.Graph.Edges.SubscribeChanged(invalidate),

@@ -11,7 +11,7 @@ where `agentsync claims` can only list leases.
 
 ```
 agentscope snapshot            # one snapshot in the terminal
-agentscope serve --web dist    # the live view on http://127.0.0.1:8765/
+agentscope serve               # the live view on http://127.0.0.1:8765/
 ```
 
 The view is a graph of session clusters (each with its sub-agents) beside a
@@ -54,8 +54,10 @@ a file that shrank is read again and reported.
 | **detail** | the selection's facts; with nothing selected, the **anomalies** |
 | **search** | dims the graph and narrows the table |
 
-Click a node and its table row is selected, and the reverse. The graph shows the
-newest 32 sessions, 3 sub-agents per session (then a "+N more" node) and 9
+Click a node and its table row is selected, and the reverse. Each cluster is sized
+by its own members and the graph scrolls (wheel, scrollbar, arrow keys) when they
+overflow, so every repository is reachable. Safety bounds on what is drawn: the
+newest 64 sessions, 6 sub-agents per session (then a "+N more" node) and 200
 repositories (live leases first); the table and the detail pane list everything
 and the status line says what the graph left out.
 
@@ -103,16 +105,40 @@ WebSocket JSON fallback was needed.
 
 ```sh
 go install github.com/go-agentsync/agentscope/cmd/agentscope@latest
-git clone https://github.com/go-agentsync/agentscope && cd agentscope
-./build.sh                       # builds dist/: app.wasm, wasm_exec.js, index.html, ...
-agentscope serve --web dist      # then open the printed URL
+agentscope serve                 # then open the printed URL
 agentscope snapshot --json       # the exact message the browser receives
 ```
+
+The wasm UI is **built on first run**, not committed (it is 25 MB). `serve`:
+
+1. finds the UI sources that belong to its own binary: after `go install` they are
+   in the module cache at the version the binary was built from
+   (`runtime/debug.ReadBuildInfo` plus `go env GOMODCACHE`); inside a checkout, the
+   working tree;
+2. compiles them with the local Go toolchain for `GOOS=js GOARCH=wasm` into
+   `<user cache dir>/agentscope/<version>-<go version>/`, and takes `wasm_exec.js`
+   from the `GOROOT` of that same toolchain. A new Go release or a changed source is
+   a new entry, never an overwrite. Later runs start at once;
+3. writes the entry into a temporary directory and renames it into place, so two
+   first runs at once cannot corrupt it (the rename that wins is the entry, the
+   other build is discarded and its run uses the winner's).
+
+**What it needs:** the Go toolchain on `PATH`, and network access the first time
+for the Go modules (the usual `go build` rules; `GOFLAGS=-mod=readonly`). With no
+`go` it stops and names the way out: **`agentscope serve --web DIR`** serves a UI you
+built elsewhere and needs no toolchain.
+
+**What it will not build from:** a source directory, or any directory above it up to
+the module cache, that is not owned by you or root, or that is writable by its group
+or by everyone, because whoever can write there decides what the compiler runs.
+Commands are run with an argument list, never through a shell. (Ownership checks
+are unix; elsewhere the path is trusted.)
 
 `snapshot` and `serve` take `--claude-dir`, `--localhost-root`, `--github-root`,
 `--active` (a session is **active** when its transcript was written within this;
 default 10m), `--horizon` (default 12h), `--tell-window` (24h) and `--max-agents`.
-`serve` takes `--addr` (default `127.0.0.1:8765`), `--web` and `--interval` (2s).
+`serve` takes `--addr` (default `127.0.0.1:8765`), `--interval` (2s), `--web DIR`
+(serve a directory instead of building the UI) and `--cache-dir` (where builds go).
 `snapshot --stats --warm N` prints the time and allocation counts of one cold and
 N incremental collections.
 
@@ -162,26 +188,26 @@ go test -coverprofile=coverage.out -coverpkg=./... ./... && \
 go test -fuzz '^FuzzParseLine$' -fuzztime 30s ./collect # also FuzzScan, FuzzResolve, ...
 go vet -vettool="$(which mvvmlint)" ./...               # the MVVM gate
 go vet -vettool="$(which bricolint)" ./...              # the no-hand-drawn-UI gate
+go run ./internal/capture -out "$HOME/Library/Application Support/agentscope/captures/live.png"
+                                                        # a screenshot, after the stream arrived
 ```
 
+`internal/capture` drives a real Chrome over the DevTools protocol (headless
+`--screenshot` fires at the load event, before the wasm has booted, and shoots an
+empty window) and refuses to write inside a git work tree: a capture shows real
+session ids and lease notes.
+
 CI runs actionlint, gofmt, vet, `-race` tests, the coverage gate (a Go program,
-not awk), vet for darwin and windows, the wasm build through `build.sh`,
+not awk), vet for darwin and windows, a real first-run UI build from a clean cache,
 `govulncheck` judged by `vulngate`, `mvvmlint` and `bricolint` with a negative
 control that proves the guard still bites.
 
-## Known limits (v0.1.0)
+## Known limits
 
-Tracked as issues ([#2](https://github.com/go-agentsync/agentscope/issues/2),
-[#3](https://github.com/go-agentsync/agentscope/issues/3)): the wasm bundle is built
-with `build.sh`, not embedded in the binary or released; timings were not taken on a
-quiet machine; only macOS has been exercised; there are no org landing or docs
-surfaces yet. In the toolkit
-([go-widgets/toolkit#595](https://github.com/go-widgets/toolkit/issues/595)): the
-graph does not scroll and sizes every cluster like the largest, so it is bounded as
-above; a `Table` does not clip its cells (so they are cut to fit) and selects a row
-on click only with `MultiSelect`. In
-[go-widgets/mvvmtk#44](https://github.com/go-widgets/mvvmtk/issues/44): there is
-no `BindTableRows`, so that glue lives in `ui/tablerows_binding.go`.
+Timings were not taken on a quiet machine, only macOS has been exercised
+([#2](https://github.com/go-agentsync/agentscope/issues/2)), and there are no org
+landing or docs surfaces yet
+([#3](https://github.com/go-agentsync/agentscope/issues/3)).
 
 ## License
 

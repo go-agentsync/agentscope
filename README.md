@@ -50,7 +50,8 @@ a file that shrank is read again and reported.
 | **cluster** | one per session (`<short id> <repo>`), and one "other repositories" for repositories nobody holds |
 | **node** | the session's main agent (orange = active, yellow = idle), its sub-agents (**labelled by their task**, the `description` in their meta; coloured by agent type), and **every repository it holds, inside its own cluster**, so who holds what is where it sits. Repository labels are `org/repo`; when that does not fit the ORG is shortened and the repo kept whole |
 | **edge** | session to sub-agent (spawn), session to repository (lease), sender to target (`tell`) |
-| **table** | session, repository, task (live lease note, else title, else slug), last activity, #sub-agents |
+| **table** | session, **model**, repository, task (live lease note, else title, else slug), last activity, #sub-agents |
+| **status line** | counts, and the sessions and sub-agents per model family ("models: Sonnet 29 \| Opus 23 \| Haiku 1"): where the token budget goes |
 | **detail** | the selection's facts; with nothing selected, the **anomalies** |
 | **search** | dims the graph and narrows the table |
 
@@ -77,6 +78,21 @@ overflow, so every repository is reachable. Safety bounds on what is drawn: the
 newest 64 sessions, 6 sub-agents per session (then a "+N more" node) and 200
 repositories (live leases first); the table and the detail pane list everything
 and the status line says what the graph left out.
+
+### Models
+
+The model of a session and of each sub-agent is `message.model` of the **latest
+assistant entry** of its transcript (a sub-agent's is in its own
+`subagents/agent-<id>.jsonl`; only the tail is read, 4 MiB for a session and 256 KiB
+for a sub-agent), so a `/model` change shows up. The table says "Opus 5.5"; the
+detail pane has the raw id, and when more than one model was seen inside the
+horizon, all of them, newest first. An id that does not match
+`claude-(opus|sonnet|haiku|fable)-<major>[-<minor>]` is shown as `?` with the raw
+id, and a transcript with no assistant entry as `? (none seen)`: the model is never
+guessed. Claude Code's `<synthetic>` placeholder (an error or interruption) is
+listed with the models seen but is never the latest. Only the id is decoded from an
+entry: it has no field for its content. A sub-agent's model is in its detail (the
+graph has no tooltip: GraphView has no hover); colouring nodes by model is not done.
 
 ### Anomalies are shown, not hidden
 

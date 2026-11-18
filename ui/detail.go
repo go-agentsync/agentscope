@@ -80,6 +80,20 @@ func detailLines(s model.Snapshot, sel string) []string {
 	return anomalyLines(s)
 }
 
+// modelLines is the model of a session or sub-agent: the latest, with its raw
+// id, and, when more than one was seen, every model newest first. A missing or
+// unrecognised id is shown as "?" with the raw id; nothing is guessed.
+func modelLines(s model.Snapshot, latest string, seen []model.ModelSeen) []string {
+	lines := []string{"model: " + model.ModelLabel(latest)}
+	if len(seen) > 1 {
+		lines = append(lines, "models seen (newest first):")
+		for _, m := range seen {
+			lines = append(lines, "  "+model.ModelLabel(m.ID)+", last "+ago(s.At, m.Last)+" ago")
+		}
+	}
+	return lines
+}
+
 func anomalyLines(s model.Snapshot) []string {
 	lines := []string{"ANOMALIES (" + strconv.Itoa(len(s.Anomalies)) + "): shown, not hidden"}
 	for _, a := range s.Anomalies {
@@ -121,6 +135,7 @@ func sessionDetail(s model.Snapshot, short string) []string {
 			lines = append(lines, k+": "+v)
 		}
 	}
+	lines = append(lines, modelLines(s, se.Model, se.Models)...)
 	add("title", se.Title)
 	add("slug", se.Slug)
 	add("cwd", se.Cwd)
@@ -144,7 +159,7 @@ func sessionDetail(s model.Snapshot, short string) []string {
 		if a.Active {
 			act = "ACTIVE"
 		}
-		lines = append(lines, "  "+a.Type+" ["+act+"] "+a.Description)
+		lines = append(lines, "  "+a.Type+" ["+act+", "+modelShort(a.Model)+"] "+a.Description)
 	}
 	for _, t := range s.Tells {
 		switch {
@@ -168,11 +183,12 @@ func agentDetail(s model.Snapshot, rest string) []string {
 		if a.Active {
 			act = "ACTIVE"
 		}
-		return []string{
+		lines := []string{
 			"sub-agent " + a.ID, "type: " + a.Type, "state: " + act,
 			"spawn depth: " + strconv.Itoa(a.Depth), "spawned by session " + short,
 			"description: " + a.Description, "tool use: " + a.ToolUseID,
 		}
+		return append(lines, modelLines(s, a.Model, a.Models)...)
 	}
 	return []string{"sub-agent " + id + ": not in this snapshot"}
 }

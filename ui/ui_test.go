@@ -24,11 +24,13 @@ func snap() model.Snapshot {
 		Version: 1, At: t0, ActiveFor: "10m0s",
 		Sessions: []model.Session{
 			{ID: idA, Short: "aaaaaaaa", Active: true, HasTranscript: true, Title: "A title", Cwd: "/w/a", CwdRepo: "o/a", Branch: "b", PR: "o/a#1", Project: "-p", Slug: "slug", Sent: 2, MemAdds: 3,
+				Model:        "claude-opus-5-5",
+				Models:       []model.ModelSeen{{ID: "claude-opus-5-5", Last: t0}, {ID: "claude-sonnet-5-5", Last: t0.Add(-2 * time.Hour)}},
 				LastActivity: t0.Add(-time.Minute), Agents: []model.Agent{
-					{ID: "ag1", Type: "general-purpose", Description: "fix the build", ToolUseID: "toolu_1", Depth: 1, Active: true, LastActivity: t0},
+					{ID: "ag1", Type: "general-purpose", Description: "fix the build", ToolUseID: "toolu_1", Depth: 1, Active: true, LastActivity: t0, Model: "claude-sonnet-5-5"},
 					{ID: "ag2", Type: "", Description: "idle one", LastActivity: t0.Add(-3 * time.Hour)},
 				}},
-			{ID: idB, Short: "bbbbbbbb", HasTranscript: true, CwdRepo: "o/b", LastActivity: t0.Add(-2 * time.Hour)},
+			{ID: idB, Short: "bbbbbbbb", HasTranscript: true, CwdRepo: "o/b", Model: "claude-mystery-9", LastActivity: t0.Add(-2 * time.Hour)},
 			{ID: idC, Short: "cccccccc", LastActivity: t0.Add(-72 * time.Hour)},
 		},
 		Leases: []model.Lease{
@@ -84,10 +86,10 @@ func TestViewModelApplyFiltersAndSelects(t *testing.T) {
 	if vm.Rows.At(1).State != "idle" || vm.Rows.At(1).Repo != "o/b" || vm.Rows.At(2).State != "no tr." {
 		t.Errorf("rows %+v", vm.Rows.Slice())
 	}
-	if cells := r.Cells(); len(cells) != 6 || cells[1] != "aaaaaaaa" {
+	if cells := r.Cells(); len(cells) != 7 || cells[1] != "aaaaaaaa" || cells[2] != "Opus 5.5" {
 		t.Errorf("cells %v", cells)
 	}
-	if !strings.Contains(vm.Status.Get(), "3 sessions (1 active in 10m0s) | 2 sub-agents | 3 repos (2 held) | 4 tells | 2 anomalies | 12:00:00") {
+	if !strings.Contains(vm.Status.Get(), "3 sessions (1 active in 10m0s) | 2 sub-agents | 3 repos (2 held) | 4 tells | 2 anomalies | models: ? 3 | Opus 1 | Sonnet 1 | 12:00:00") {
 		t.Errorf("status %q", vm.Status.Get())
 	}
 	// The first line of the detail pane, with nothing selected, is the anomalies.
@@ -183,7 +185,8 @@ func TestDetailLines(t *testing.T) {
 	a := join("node:s:aaaaaaaa")
 	for _, want := range []string{"session " + idA, "ACTIVE", "task: working on a", "title: A title", "slug: slug", "cwd: /w/a", "cwd repo: o/a", "branch: b", "pull request: o/a#1",
 		"project: -p", "sent 2 SendMessage", "3 memory entries", "leases (3):", "o/a [held until 13:00]", "o/old [expired 4h ago] done", "sub-agents (2):",
-		"general-purpose [ACTIVE] fix the build", "[3h] idle one", "tell sent to bbbbbbbb: hello b", "tell sent to dddddddd"} {
+		"general-purpose [ACTIVE, Sonnet 5.5] fix the build", "[3h, ?] idle one", "tell sent to bbbbbbbb: hello b", "tell sent to dddddddd",
+		"model: Opus 5.5 (claude-opus-5-5)", "models seen (newest first):", "  Sonnet 5.5 (claude-sonnet-5-5), last 2h ago"} {
 		if !strings.Contains(a, want) {
 			t.Errorf("session detail lacks %q:\n%s", want, a)
 		}
@@ -199,7 +202,10 @@ func TestDetailLines(t *testing.T) {
 		t.Error("unknown session")
 	}
 
-	if g := join("node:a:aaaaaaaa:ag1"); !strings.Contains(g, "sub-agent ag1") || !strings.Contains(g, "ACTIVE") || !strings.Contains(g, "spawned by session aaaaaaaa") {
+	if !strings.Contains(b, "model: ? (claude-mystery-9)") {
+		t.Errorf("an unknown model is shown as ? with its raw id:\n%s", b)
+	}
+	if g := join("node:a:aaaaaaaa:ag1"); !strings.Contains(g, "model: Sonnet 5.5 (claude-sonnet-5-5)") || !strings.Contains(g, "sub-agent ag1") || !strings.Contains(g, "ACTIVE") || !strings.Contains(g, "spawned by session aaaaaaaa") {
 		t.Errorf("%s", g)
 	}
 	if g := join("node:a:aaaaaaaa:ag2"); !strings.Contains(g, "idle, last 3h ago") {

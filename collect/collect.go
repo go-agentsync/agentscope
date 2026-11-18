@@ -304,14 +304,15 @@ func (c *Collector) Snapshot() model.Snapshot {
 				ts = &tstate{}
 				c.trans[f.path] = ts
 			}
-			c.readTranscript(f, ts, st, addAnom)
+			c.readTranscript(f, ts, c.opt.TailBytes, st, addAnom)
+			se.Model, se.Models = modelsOf(ts, horizon)
 			se.Slug, se.Cwd, se.Branch, se.PR, se.Sent = ts.slug, ts.cwd, ts.branch, ts.pr, ts.sent
 			se.Title = ts.custom
 			if se.Title == "" {
 				se.Title = ts.title
 			}
 			se.CwdRepo = c.res.RepoOfCwd(ts.cwd)
-			se.Agents = c.readAgents(filepath.Dir(f.path), id, now, st)
+			se.Agents = c.readAgents(filepath.Dir(f.path), id, now, st, addAnom)
 		}
 		snap.Sessions = append(snap.Sessions, se)
 	}
@@ -422,7 +423,7 @@ func (c *Collector) Snapshot() model.Snapshot {
 func itoa(n int) string { return strconv.Itoa(n) }
 
 // readTranscript advances one transcript's state.
-func (c *Collector) readTranscript(f transFile, ts *tstate, st *model.Stats, addAnom func(k, s, d string)) {
+func (c *Collector) readTranscript(f transFile, ts *tstate, tail int64, st *model.Stats, addAnom func(k, s, d string)) {
 	if ts.size == f.size && ts.offset == f.size {
 		return // nothing appended
 	}
@@ -436,7 +437,7 @@ func (c *Collector) readTranscript(f transFile, ts *tstate, st *model.Stats, add
 	if ts.size > f.size {
 		addAnom(model.AnomalyTranscriptStall, model.ShortID(strings.TrimSuffix(filepath.Base(f.path), ".jsonl")), "the file is smaller than at the last read; it was read again from its tail")
 	}
-	n, err := scan(fh, f.size, ts, c.opt.TailBytes, c.opt.MaxLine)
+	n, err := scan(fh, f.size, ts, tail, c.opt.MaxLine)
 	st.TranscriptsRead++
 	st.BytesRead += n
 	if err != nil {
@@ -447,7 +448,7 @@ func (c *Collector) readTranscript(f transFile, ts *tstate, st *model.Stats, add
 
 // readAgents lists the sub-agents of a session, newest first, from the
 // meta.json files beside their transcripts.
-func (c *Collector) readAgents(projDir, id string, now time.Time, st *model.Stats) []model.Agent {
+func (c *Collector) readAgents(projDir, id string, now time.Time, st *model.Stats, addAnom func(k, s, d string)) []model.Agent {
 	dir := filepath.Join(projDir, id, "subagents")
 	ents, err := os.ReadDir(dir)
 	if err != nil {
@@ -489,7 +490,49 @@ func (c *Collector) readAgents(projDir, id string, now time.Time, st *model.Stat
 	if c.opt.MaxAgents > 0 && len(out) > c.opt.MaxAgents {
 		out = out[:c.opt.MaxAgents]
 	}
+	// The model of each listed sub-agent, from the tail of its own transcript.
+	for i := range out {
+		p := filepath.Join(dir, "agent-"+out[i].ID+".jsonl")
+		info, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		ts := c.trans[p]
+		if ts == nil {
+			ts = &tstate{}
+			c.trans[p] = ts
+		}
+		c.readTranscript(transFile{path: p, mod: info.ModTime(), size: info.Size()}, ts, agentTailBytes, st, addAnom)
+		out[i].Model, out[i].Models = modelsOf(ts, horizon)
+	}
 	return out
+}
+
+// agentTailBytes is how much of a sub-agent transcript is read the first time:
+// its model is in its recent entries, and there are many sub-agents.
+const agentTailBytes = 256 << 10
+
+// modelsOf is the latest model of a transcript and every model seen since the
+// horizon, newest first.
+func modelsOf(ts *tstate, horizon time.Time) (string, []model.ModelSeen) {
+	var all []model.ModelSeen
+	for _, m := range ts.models {
+		if m.last.IsZero() || m.last.After(horizon) {
+			all = append(all, model.ModelSeen{ID: m.id, Last: m.last})
+		}
+	}
+	if len(all) == 0 {
+		return "", nil
+	}
+	// Claude Code writes assistant entries whose model is the placeholder
+	// "<synthetic>" (an error or an interruption, not an answer by a model):
+	// they are listed with the models seen, but are never "the latest model".
+	for _, m := range all {
+		if !strings.HasPrefix(m.ID, "<") {
+			return m.ID, all
+		}
+	}
+	return "", all
 }
 
 func (c *Collector) meta(path string, e os.DirEntry, st *model.Stats) (agentMeta, bool) {

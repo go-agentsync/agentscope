@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -36,6 +37,7 @@ type tstate struct {
 	lastTS  time.Time
 	sent    int
 	sentTo  map[string]int
+	models  []modelSeen // newest first
 	skipped int
 	bad     int
 }
@@ -55,6 +57,11 @@ type rawLine struct {
 	CustomTitle string `json:"customTitle"`
 	PRNumber    int    `json:"prNumber"`
 	PRRepo      string `json:"prRepository"`
+	// Message carries only the model an assistant entry was answered by; there
+	// is no field for its content.
+	Message struct {
+		Model string `json:"model"`
+	} `json:"message"`
 }
 
 // rawTools is read only for assistant lines that mention SendMessage, and only
@@ -127,7 +134,50 @@ func parseLine(line []byte, st *tstate) bool {
 			st.lastTS = t
 		}
 	}
+	if r.Type == "assistant" && r.Message.Model != "" {
+		var at time.Time
+		if t, err := time.Parse(time.RFC3339Nano, r.Timestamp); err == nil {
+			at = t
+		}
+		st.noteModel(clip(r.Message.Model, 80), at)
+	}
 	return true
+}
+
+// modelSeen is a model id and the last time an assistant entry named it.
+type modelSeen struct {
+	id   string
+	last time.Time
+}
+
+// maxModels bounds the models remembered per transcript.
+const maxModels = 16
+
+// noteModel records that an assistant entry at `at` was answered by id. The
+// list stays newest first; an entry with no usable timestamp counts as the
+// newest line read so far, which is what its position in the file says.
+func (st *tstate) noteModel(id string, at time.Time) {
+	if at.IsZero() {
+		at = st.lastTS
+	}
+	for i := range st.models {
+		if st.models[i].id == id {
+			if at.After(st.models[i].last) {
+				st.models[i].last = at
+			}
+			st.sortModels()
+			return
+		}
+	}
+	if len(st.models) >= maxModels {
+		st.models = st.models[:maxModels-1]
+	}
+	st.models = append(st.models, modelSeen{id, at})
+	st.sortModels()
+}
+
+func (st *tstate) sortModels() {
+	sort.SliceStable(st.models, func(i, j int) bool { return st.models[i].last.After(st.models[j].last) })
 }
 
 // clip bounds a string taken from untrusted input to n bytes, on a rune

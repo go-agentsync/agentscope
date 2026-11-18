@@ -41,6 +41,8 @@ func newFixture(t testing.TB) *fixture {
 	f.transcript(proj, sidA, f.now.Add(-1*time.Minute),
 		`{"type":"user","timestamp":"2026-11-18T11:58:00Z","cwd":"`+filepath.Join(f.local, "go-tex-engine-diag")+`","gitBranch":"fix","slug":"calm-otter","message":{"content":"PRIVATE PROMPT"}}`,
 		`{"type":"ai-title","aiTitle":"Title A"}`,
+		`{"type":"assistant","timestamp":"2026-11-18T11:50:00Z","message":{"model":"claude-sonnet-5-5","content":"PRIVATE REPLY"}}`,
+		`{"type":"assistant","timestamp":"2026-11-18T11:59:00Z","message":{"model":"claude-opus-5-5"}}`,
 		`{"type":"assistant","message":{"content":[{"type":"tool_use","name":"SendMessage","input":{"to":"agentx"}}]}}`)
 	f.transcript(proj, sidB, f.now.Add(-2*time.Hour),
 		`{"type":"user","cwd":"`+filepath.Join(f.github, "go-agentsync", "agentsync", "lease")+`"}`)
@@ -48,7 +50,7 @@ func newFixture(t testing.TB) *fixture {
 	// Sub-agents of A: one recent, one older than the horizon, one broken meta.
 	sub := filepath.Join(proj, sidA, "subagents")
 	writeFile(f.t, filepath.Join(sub, "agent-a1.meta.json"), `{"agentType":"general-purpose","description":"fix the build","toolUseId":"toolu_1","spawnDepth":1}`)
-	writeFile(f.t, filepath.Join(sub, "agent-a1.jsonl"), "{}\n")
+	writeFile(f.t, filepath.Join(sub, "agent-a1.jsonl"), `{"type":"assistant","timestamp":"2026-11-18T11:55:00Z","message":{"model":"claude-haiku-5-5"}}`+"\n")
 	writeFile(f.t, filepath.Join(sub, "agent-a2.meta.json"), `{"agentType":"Explore"}`)
 	f.chtimes(filepath.Join(sub, "agent-a2.jsonl"), f.now.Add(-30*time.Hour), "{}\n")
 	writeFile(f.t, filepath.Join(sub, "agent-a3.meta.json"), `{broken`)
@@ -135,7 +137,13 @@ func TestSnapshotOfAFixtureTree(t *testing.T) {
 	if len(a.Agents) != 2 || a.Agents[0].Type == "" && a.Agents[1].Type == "" {
 		t.Errorf("sub-agents %+v (one older than the horizon and one with a broken meta must go)", a.Agents)
 	}
+	if a.Model != "claude-opus-5-5" || len(a.Models) != 2 || a.Models[1].ID != "claude-sonnet-5-5" || b.Model != "" || b.Models != nil {
+		t.Errorf("session models: A %q %v, B %q %v", a.Model, a.Models, b.Model, b.Models)
+	}
 	for _, ag := range a.Agents {
+		if ag.ID == "a1" && ag.Model != "claude-haiku-5-5" {
+			t.Errorf("the sub-agent's model comes from its own transcript: %+v", ag)
+		}
 		if ag.ID == "a1" && (ag.Type != "general-purpose" || ag.Description != "fix the build" || ag.Depth != 1 || !ag.Active) {
 			t.Errorf("agent %+v", ag)
 		}

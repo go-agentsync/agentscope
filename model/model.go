@@ -6,6 +6,7 @@
 package model
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -44,17 +45,66 @@ type Session struct {
 	Sent          int       `json:"sent"`    // SendMessage calls seen in the observed window
 	MemAdds       int       `json:"memAdds"` // entries in the agentsync session record
 	Agents        []Agent   `json:"agents,omitempty"`
+	// Model is the id of the latest assistant entry's model ("" when none was
+	// seen); Models is every model seen in the observed window, newest first.
+	Model  string      `json:"model,omitempty"`
+	Models []ModelSeen `json:"models,omitempty"`
+}
+
+// ModelSeen is a model id and when it was last seen answering.
+type ModelSeen struct {
+	ID   string    `json:"id"`
+	Last time.Time `json:"last"`
+}
+
+var familyRE = regexp.MustCompile(`^claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(?:\[[^\]]*\])?$`)
+
+// ModelName is the short family name of a model id ("Opus 5.5") and whether
+// the id was understood. It never guesses: a missing or unrecognised id is "?"
+// and the caller shows the raw id beside it.
+func ModelName(id string) (string, bool) {
+	m := familyRE.FindStringSubmatch(id)
+	if m == nil {
+		return "?", false
+	}
+	fam := strings.ToUpper(m[1][:1]) + m[1][1:]
+	if m[3] == "" {
+		return fam + " " + m[2], true
+	}
+	return fam + " " + m[2] + "." + m[3], true
+}
+
+// ModelFamily is the family alone ("Opus"), or "?" for an unknown id.
+func ModelFamily(id string) string {
+	name, ok := ModelName(id)
+	if !ok {
+		return "?"
+	}
+	fam, _, _ := strings.Cut(name, " ")
+	return fam
+}
+
+// ModelLabel is "Opus 5.5 (claude-opus-5-5)", or "? (<raw id>)" for an unknown
+// id, or "? (none seen)" when there is none.
+func ModelLabel(id string) string {
+	name, _ := ModelName(id)
+	if id == "" {
+		return "? (none seen)"
+	}
+	return name + " (" + id + ")"
 }
 
 // Agent is one sub-agent of a session.
 type Agent struct {
-	ID           string    `json:"id"`
-	Type         string    `json:"type,omitempty"`
-	Description  string    `json:"description,omitempty"`
-	ToolUseID    string    `json:"toolUseId,omitempty"`
-	Depth        int       `json:"depth"`
-	LastActivity time.Time `json:"lastActivity"`
-	Active       bool      `json:"active"`
+	Model        string      `json:"model,omitempty"`
+	Models       []ModelSeen `json:"models,omitempty"`
+	ID           string      `json:"id"`
+	Type         string      `json:"type,omitempty"`
+	Description  string      `json:"description,omitempty"`
+	ToolUseID    string      `json:"toolUseId,omitempty"`
+	Depth        int         `json:"depth"`
+	LastActivity time.Time   `json:"lastActivity"`
+	Active       bool        `json:"active"`
 }
 
 // RepoKind says how a lease resource was understood.
@@ -139,6 +189,35 @@ type Stats struct {
 	LinesUnparsable  int   `json:"linesUnparsable"`
 	ReadErrors       int   `json:"readErrors"`
 	ExpiredNotListed int   `json:"expiredNotListed"`
+}
+
+// ModelCount is how many sessions and sub-agents run one model family.
+type ModelCount struct {
+	Family string
+	N      int
+}
+
+// ModelCounts counts the listed sessions and sub-agents by model family, most
+// first (ties by name). "?" counts those whose model is unknown or unseen.
+func (s Snapshot) ModelCounts() []ModelCount {
+	n := map[string]int{}
+	for _, se := range s.Sessions {
+		n[ModelFamily(se.Model)]++
+		for _, a := range se.Agents {
+			n[ModelFamily(a.Model)]++
+		}
+	}
+	out := make([]ModelCount, 0, len(n))
+	for f, c := range n {
+		out = append(out, ModelCount{f, c})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].N != out[j].N {
+			return out[i].N > out[j].N
+		}
+		return out[i].Family < out[j].Family
+	})
+	return out
 }
 
 // Counts is the header line of the UI.

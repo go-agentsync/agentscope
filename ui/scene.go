@@ -19,7 +19,7 @@ const (
 	searchH  = 26
 	connW    = 150
 	expiredW = 150
-	rightW   = 640
+	rightW   = 720
 	tableMin = 1 // flex weight of the table
 	detailFx = 1 // flex weight of the detail pane
 )
@@ -72,6 +72,7 @@ func NewScene(w, h int) *Scene {
 	s.table = toolkit.NewTable([]toolkit.TableColumn{
 		{Title: "State", Width: 58},
 		{Title: "Session", Width: 78},
+		{Title: "Model", Width: 74},
 		{Title: "Repository", Width: 176},
 		{Title: "Task"},
 		{Title: "Last", Width: 40},

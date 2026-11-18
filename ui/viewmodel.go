@@ -58,6 +58,11 @@ type ViewModel struct {
 	// Status is the one-line summary; Conn is the connection state.
 	Status *mvvm.Observable[string]
 	Conn   *mvvm.Observable[string]
+	// ShowExpired draws the edges to a selected session's expired leases
+	// (hidden by default: the detail pane lists them). Expanded is the orgs of
+	// the "other repositories" cluster that are open.
+	ShowExpired *mvvm.Observable[bool]
+	Expanded    *mvvm.ObservableList[string]
 
 	snap     model.Snapshot
 	have     bool
@@ -76,8 +81,18 @@ func NewViewModel() *ViewModel {
 		Detail:   mvvm.NewObservableList[string](),
 		Status:   mvvm.NewObservable("waiting for the collector..."),
 		Conn:     mvvm.NewObservable("connecting"),
+
+		ShowExpired: mvvm.NewObservable(false),
+		Expanded:    mvvm.NewObservableList[string](),
 	}
 	vm.Query.SubscribeChanged(vm.onQuery)
+	vm.ShowExpired.SubscribeChanged(vm.refreshEdges)
+	vm.Expanded.SubscribeChanged(func() {
+		if vm.have {
+			vm.rebuildGraph()
+			vm.refreshDetail()
+		}
+	})
 	vm.Graph.Selected.SubscribeChanged(vm.onGraphSelected)
 	vm.TableSel.SubscribeChanged(vm.onTableSelected)
 	return vm
@@ -90,15 +105,7 @@ func (vm *ViewModel) Snapshot() (model.Snapshot, bool) { return vm.snap, vm.have
 // whose members did not change does not lay itself out again.
 func (vm *ViewModel) Apply(s model.Snapshot) {
 	vm.snap, vm.have = s, true
-	g := buildGraph(s)
-	vm.gd = g
-	setList(vm.Graph.Clusters, g.clusters)
-	setList(vm.Graph.Nodes, g.nodes)
-	vm.refreshEdges()
-	vm.notDrawn = ""
-	if g.sessionsNotDrawn > 0 || g.repoNotDrawn > 0 {
-		vm.notDrawn = " | not drawn: " + strconv.Itoa(g.sessionsNotDrawn) + " sessions, " + strconv.Itoa(g.repoNotDrawn) + " repos (see the table)"
-	}
+	vm.rebuildGraph()
 
 	vm.allRows = vm.allRows[:0]
 	for _, se := range s.Sessions {
@@ -112,6 +119,45 @@ func (vm *ViewModel) Apply(s model.Snapshot) {
 		strconv.Itoa(c.Agents) + " sub-agents | " + strconv.Itoa(c.Repos) + " repos (" + strconv.Itoa(c.Held) + " held) | " +
 		strconv.Itoa(c.Tells) + " tells | " + strconv.Itoa(c.Anomalies) + " anomalies | " + s.At.Format("15:04:05") + vm.notDrawn)
 }
+
+// rebuildGraph maps the last snapshot onto the graph, with the orgs that are
+// expanded now. Clusters and nodes are replaced only when they differ.
+func (vm *ViewModel) rebuildGraph() {
+	exp := map[string]bool{}
+	for _, o := range vm.Expanded.Slice() {
+		exp[o] = true
+	}
+	g := buildGraph(vm.snap, exp)
+	vm.gd = g
+	setList(vm.Graph.Clusters, g.clusters)
+	setList(vm.Graph.Nodes, g.nodes)
+	vm.refreshEdges()
+	vm.notDrawn = ""
+	if g.sessionsNotDrawn > 0 || g.repoNotDrawn > 0 {
+		vm.notDrawn = " | not drawn: " + strconv.Itoa(g.sessionsNotDrawn) + " sessions, " + strconv.Itoa(g.repoNotDrawn) + " repos (see the table)"
+	}
+}
+
+// ToggleOrg expands or collapses an org of the "other repositories" cluster:
+// what activating (Enter, a second click on) its node does. selection is the
+// graph's Selected value; anything that is not an org node is ignored.
+func (vm *ViewModel) ToggleOrg(selection string) {
+	org, ok := strings.CutPrefix(selection, "node:"+orgPrefix)
+	if !ok {
+		return
+	}
+	cur := vm.Expanded.Slice()
+	for i, o := range cur {
+		if o == org {
+			vm.Expanded.RemoveAt(i)
+			return
+		}
+	}
+	vm.Expanded.Append(org)
+}
+
+// CollapseAll folds every org again (Escape).
+func (vm *ViewModel) CollapseAll() { vm.Expanded.Clear() }
 
 // row builds a session's table row.
 func (vm *ViewModel) row(s model.Snapshot, se model.Session) Row {
@@ -179,7 +225,7 @@ func (vm *ViewModel) onGraphSelected() {
 // refreshEdges sets the edge list for the current selection. Only edges
 // change, so the graph does not move.
 func (vm *ViewModel) refreshEdges() {
-	setList(vm.Graph.Edges, vm.gd.edges(vm.Graph.Selected.Get()))
+	setList(vm.Graph.Edges, vm.gd.edges(vm.Graph.Selected.Get(), vm.ShowExpired.Get()))
 }
 
 // onTableSelected follows a click in the table: it selects the session's node.

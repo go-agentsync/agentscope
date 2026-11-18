@@ -173,6 +173,45 @@ func TestSceneScrollReachesTheWidgetUnderThePointer(t *testing.T) {
 	}
 }
 
+func TestSceneCheckButtonAndEscapeAndActivate(t *testing.T) {
+	s := NewScene(SurfaceW, SurfaceH)
+	s.VM().Apply(orgSnap())
+	pixels(s)
+	// The "expired leases" check button is bound to ShowExpired.
+	s.expired.Checked().Set(true)
+	if !s.VM().ShowExpired.Get() {
+		t.Error("the check button did not drive the ViewModel")
+	}
+	s.VM().ShowExpired.Set(false)
+	if s.expired.Checked().Get() {
+		t.Error("the ViewModel did not drive the check button")
+	}
+	// Select the org node, activate it with Enter: it expands.
+	box, ok := s.graph.NodeBox("o:ghost")
+	if !ok {
+		t.Fatal("no org node")
+	}
+	x, y := center(box)
+	s.HandleClick(x, y)
+	s.HandleKeyDown("Enter")
+	if s.VM().Expanded.Len() != 1 {
+		t.Fatalf("Enter did not expand: %v", s.VM().Expanded.Slice())
+	}
+	if !s.Dirty() {
+		t.Error("an expansion must repaint")
+	}
+	// Escape collapses, with or without a focused widget.
+	s.HandleKeyDown("Escape")
+	if s.VM().Expanded.Len() != 0 {
+		t.Error("Escape did not collapse")
+	}
+	s.VM().ToggleOrg("node:o:ghost")
+	s.HandleClick(1, SurfaceH-1) // drops the focus
+	if !s.HandleKeyDown("Escape") || s.VM().Expanded.Len() != 0 {
+		t.Error("Escape with nothing focused must still collapse")
+	}
+}
+
 func TestSceneConnectionLabelAndStatusAreBound(t *testing.T) {
 	s := newScene(t)
 	if s.conn.Text().Get() != "connecting" {

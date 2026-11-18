@@ -18,6 +18,7 @@ const (
 	gap      = 6
 	searchH  = 26
 	connW    = 150
+	expiredW = 150
 	rightW   = 640
 	tableMin = 1 // flex weight of the table
 	detailFx = 1 // flex weight of the detail pane
@@ -32,10 +33,12 @@ type Scene struct {
 
 	search *toolkit.SearchEntry
 	conn   *toolkit.Label
-	graph  *toolkit.GraphView
-	table  *toolkit.Table
-	detail *toolkit.ListBox
-	status *toolkit.Label
+	// expired is the "show expired leases" toggle.
+	expired *toolkit.CheckButton
+	graph   *toolkit.GraphView
+	table   *toolkit.Table
+	detail  *toolkit.ListBox
+	status  *toolkit.Label
 
 	root *toolkit.VBox
 
@@ -59,9 +62,13 @@ func NewScene(w, h int) *Scene {
 	// Without an Icon the entry draws "?" as a stand-in for the magnifier.
 	s.search.Icon = toolkit.DrawIconSearch
 	s.conn = toolkit.NewLabel("")
+	s.expired = toolkit.NewCheckButton("expired leases", false)
 	s.graph = toolkit.NewGraphView(vm.Graph)
 	s.graph.ShowLegend = true
 	s.graph.NodeWidth = NodeWidth // wide enough for an org/repo or a task
+	// Enter, or a second click on a selected node, activates it: an org node
+	// expands or collapses (the expansion is ViewModel state).
+	s.graph.OnActivate = vm.ToggleOrg
 	s.table = toolkit.NewTable([]toolkit.TableColumn{
 		{Title: "State", Width: 58},
 		{Title: "Session", Width: 78},
@@ -80,6 +87,8 @@ func NewScene(w, h int) *Scene {
 	s.unbind = append(s.unbind,
 		mvvmtk.BindText(s.search, vm.Query, invalidate),
 		mvvmtk.BindLabel(s.conn, vm.Conn, invalidate),
+		mvvmtk.BindChecked(s.expired, vm.ShowExpired, invalidate),
+		vm.Expanded.SubscribeChanged(invalidate),
 		mvvmtk.BindLabel(s.status, vm.Status, invalidate),
 		mvvmtk.BindTableSelection(s.table, vm.TableSel, invalidate),
 		mvvmtk.BindListItems(s.detail, vm.Detail, func(l string) string { return l }, invalidate),
@@ -94,6 +103,7 @@ func NewScene(w, h int) *Scene {
 	top := toolkit.NewHBox()
 	top.Spacing = gap
 	top.AddFlex(s.search, 1)
+	top.AddFixed(s.expired, expiredW)
 	top.AddFixed(s.conn, connW)
 
 	side := toolkit.NewVBox()
@@ -113,7 +123,7 @@ func NewScene(w, h int) *Scene {
 	s.root.AddFixed(s.status, toolkit.StatusbarH)
 	s.root.SetBounds(toolkit.Rect{X: margin, Y: margin, W: w - 2*margin, H: h - 2*margin})
 
-	s.clickables = []toolkit.Widget{s.search, s.graph, s.table, s.detail}
+	s.clickables = []toolkit.Widget{s.search, s.expired, s.graph, s.table, s.detail}
 	s.dirty = true
 	return s
 }
@@ -170,8 +180,11 @@ func (s *Scene) HandleChar(ch string) bool {
 
 // HandleKeyDown routes a named key to the focused widget.
 func (s *Scene) HandleKeyDown(code string) bool {
+	if code == "Escape" {
+		s.vm.CollapseAll() // Escape folds every open org (the graph also clears its selection)
+	}
 	if s.keyTarget == nil {
-		return false
+		return code == "Escape"
 	}
 	s.keyTarget.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: code})
 	return true

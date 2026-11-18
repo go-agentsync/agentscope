@@ -68,6 +68,8 @@ func detailLines(s model.Snapshot, sel string) []string {
 		return agentDetail(s, strings.TrimPrefix(sel, "node:"+agentPrefix))
 	case strings.HasPrefix(sel, "node:"+repoPrefix):
 		return repoDetail(s, strings.TrimPrefix(sel, "node:"+repoPrefix))
+	case strings.HasPrefix(sel, "node:"+orgPrefix):
+		return orgDetail(s, strings.TrimPrefix(sel, "node:"+orgPrefix))
 	case strings.HasPrefix(sel, "node:"+morePrefix):
 		short := strings.TrimPrefix(sel, "node:"+morePrefix)
 		se, _ := s.SessionByShort(short)
@@ -173,6 +175,31 @@ func agentDetail(s model.Snapshot, rest string) []string {
 		}
 	}
 	return []string{"sub-agent " + id + ": not in this snapshot"}
+}
+
+// orgDetail lists the repositories nobody holds under one org, in full.
+func orgDetail(s model.Snapshot, org string) []string {
+	// Held is what the graph calls held: a live lease of a listed session.
+	listed := map[string]bool{}
+	for _, se := range s.Sessions {
+		listed[se.ID] = true
+	}
+	held := map[string]bool{}
+	for _, l := range s.Leases {
+		if !l.Expired && listed[l.Owner] {
+			held[l.Repo] = true
+		}
+	}
+	var repos []string
+	seen := map[string]bool{}
+	for _, l := range s.Leases {
+		if orgOf(l.Repo) == org && !held[l.Repo] && !seen[l.Repo] {
+			seen[l.Repo] = true
+			repos = append(repos, l.Repo)
+		}
+	}
+	lines := []string{"org " + org + ": " + strconv.Itoa(len(repos)) + " repositories nobody holds", "(Enter or a second click expands it; Escape collapses)"}
+	return append(lines, repos...)
 }
 
 func repoDetail(s model.Snapshot, key string) []string {

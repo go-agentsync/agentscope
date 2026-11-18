@@ -57,9 +57,19 @@ a file that shrank is read again and reported.
 **Focus.** With nothing selected only the edges of **active** sessions are drawn,
 and dimmed (an expired lease's edge is not drawn at all); tells are always in full,
 there are few and each is a message. Select a node and its edges are drawn in full
-while the rest stay dimmed; select a session and its whole cluster is in focus,
-expired leases included; select an edge to see it alone in full. Only edges change
-on a selection: no node moves.
+while the rest stay dimmed; select a session and its whole cluster is in focus.
+Edges to **expired** leases are not drawn (the detail pane lists them in full); the
+**expired leases** check button, bound to the ViewModel, draws them for a selection.
+Select an edge to see it alone in full. Only edges change on a selection: no node
+moves.
+
+Repositories nobody holds are **folded by org**: one grey node per org with a count
+(`+ go-authn (6)`). Enter, or a second click on it, expands it (`-`); Escape folds
+every org again. The expansion is ViewModel state. A session with no live lease is
+titled with the repository of its transcript's last cwd, marked `(cwd)` so it is not
+mistaken for one it holds. GraphView has no hover events, so the full text of a
+node (a sub-agent's whole description, a whole `org/repo`, an org's repositories) is
+in the detail pane for the selected node.
 
 Click a node and its table row is selected, and the reverse. Each cluster is sized
 by its own members and the graph scrolls (wheel, scrollbar, arrow keys) when they

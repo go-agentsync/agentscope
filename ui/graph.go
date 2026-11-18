@@ -36,6 +36,7 @@ const (
 	sessionPrefix = "s:"
 	agentPrefix   = "a:"
 	repoPrefix    = "r:"
+	orgPrefix     = "o:"
 	morePrefix    = "m:"
 	leasePrefix   = "ls:"
 	spawnPrefix   = "sp:"
@@ -61,9 +62,11 @@ type graphData struct {
 	clusters []toolkit.GraphCluster
 	nodes    []toolkit.GraphNode
 	cands    []candidate
-	// nodeCluster is node id -> cluster id; active is session short id -> active.
+	// nodeCluster is node id -> cluster id; active is session short id -> active;
+	// orgRepos is org -> the unheld repositories folded under it.
 	nodeCluster map[string]string
 	active      map[string]bool
+	orgRepos    map[string][]string
 	// notDrawn counts what the bounds above left off the picture.
 	sessionsNotDrawn, repoNotDrawn int
 }
@@ -77,8 +80,8 @@ type graphData struct {
 //	         in the one other cluster
 //	edge     session -> sub-agent (spawn), session -> repository (lease),
 //	         sender -> target (tell)
-func buildGraph(s model.Snapshot) graphData {
-	g := graphData{nodeCluster: map[string]string{}, active: map[string]bool{}}
+func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
+	g := graphData{nodeCluster: map[string]string{}, active: map[string]bool{}, orgRepos: map[string][]string{}}
 	drawn := map[string]bool{}
 	sessions := s.Sessions
 	if len(sessions) > MaxGraphSessions {
@@ -141,7 +144,7 @@ func buildGraph(s model.Snapshot) graphData {
 		if r := sessionRepo(s, se); r != "" {
 			label += " " + r
 		}
-		g.clusters = append(g.clusters, toolkit.GraphCluster{ID: se.Short, Label: model.Truncate(label, 36)})
+		g.clusters = append(g.clusters, toolkit.GraphCluster{ID: se.Short, Label: model.Truncate(label, 48)})
 		main := sessionPrefix + se.Short
 		add(toolkit.GraphNode{ID: main, Label: se.Short, Cluster: se.Short, Category: cat})
 		for i, a := range se.Agents {
@@ -170,8 +173,32 @@ func buildGraph(s model.Snapshot) graphData {
 	}
 	if len(free) > 0 {
 		g.clusters = append(g.clusters, toolkit.GraphCluster{ID: reposCluster, Label: repoClusterLabel})
+		// Repositories nobody holds are folded by org: one node per org with a
+		// count, which expands (and collapses) in place. An org with a single
+		// repository needs no fold and shows that repository.
+		count := map[string]int{}
 		for _, k := range free {
-			add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: "repo"})
+			g.orgRepos[orgOf(k)] = append(g.orgRepos[orgOf(k)], k)
+			count[orgOf(k)]++
+		}
+		done := map[string]bool{}
+		for _, k := range free {
+			org := orgOf(k)
+			if count[org] < 2 {
+				add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: "repo"})
+				continue
+			}
+			if !done[org] {
+				done[org] = true
+				sign := "+ "
+				if expanded[org] {
+					sign = "- "
+				}
+				add(toolkit.GraphNode{ID: orgPrefix + org, Label: model.Truncate(sign+org+" ("+strconv.Itoa(count[org])+")", NodeChars), Cluster: reposCluster, Category: "org"})
+			}
+			if expanded[org] {
+				add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: "repo"})
+			}
 		}
 	}
 
@@ -212,7 +239,7 @@ func buildGraph(s model.Snapshot) graphData {
 // (its main node) counts as selecting its whole cluster, repositories it holds
 // included. Selecting an edge draws it in full. Edge changes never move a node
 // (the GraphView lays out on cluster and node changes only).
-func (g graphData) edges(sel string) []toolkit.GraphEdge {
+func (g graphData) edges(sel string, showExpired bool) []toolkit.GraphEdge {
 	focus := map[string]bool{}
 	edgeSel := ""
 	switch {
@@ -236,7 +263,11 @@ func (g graphData) edges(sel string) []toolkit.GraphEdge {
 		switch {
 		case c.tell:
 			e.State = toolkit.GraphEdgeNormal
-		case focus[e.From] || focus[e.To] || e.ID == edgeSel:
+		case e.ID == edgeSel:
+			e.State = toolkit.GraphEdgeNormal
+		case c.expired && !showExpired:
+			continue // an expired lease is history: the detail pane lists it
+		case focus[e.From] || focus[e.To]:
 			e.State = toolkit.GraphEdgeNormal
 		case g.active[c.session] && !c.expired:
 			e.State = toolkit.GraphEdgeIdle
@@ -249,14 +280,27 @@ func (g graphData) edges(sel string) []toolkit.GraphEdge {
 }
 
 // sessionRepo is the repository to name a session by: the first live lease's,
-// else the one its working directory is inside.
+// else the one its working directory is inside, marked "(cwd)" so it is not
+// mistaken for a repository the session holds.
 func sessionRepo(s model.Snapshot, se model.Session) string {
 	for _, l := range s.LeasesOf(se.ID) {
 		if !l.Expired {
 			return l.Repo
 		}
 	}
-	return se.CwdRepo
+	if se.CwdRepo != "" {
+		return se.CwdRepo + " (cwd)"
+	}
+	return ""
+}
+
+// orgOf is the org half of org/repo, "" when there is none.
+func orgOf(key string) string {
+	org, _, _ := strings.Cut(key, "/")
+	if org == key {
+		return ""
+	}
+	return org
 }
 
 // RepoLabel is org/repo cut to at most max characters. When it does not fit,

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"resource\":\"go-tex\",\"from\":\"f\",\"text\":\"line one\\nline two\",\"at\":\"2026-11-12T12:05:01.982026+01:00\"}\n{\"resource\":\"x\"\nxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n")

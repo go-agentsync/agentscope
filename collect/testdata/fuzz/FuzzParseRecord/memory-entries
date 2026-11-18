@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("[{\"name\":\"n\",\"line\":\"a memory index line\",\"section\":\"s\",\"index\":\"/x/MEMORY.md\",\"added\":\"2026-10-26T11:48:19.131829+01:00\"},{\"added\":\"nope\"},null,7]")

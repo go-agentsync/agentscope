@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"type\":\"pr-link\",\"prNumber\":99999999999999999999999999,\"prRepository\":\"o/r\",\"aiTitle\":1e999,\"timestamp\":\"0000-00-00T00:00:00Z\"}")

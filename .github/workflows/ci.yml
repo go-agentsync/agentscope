@@ -1,0 +1,127 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  GOWORK: "off"
+
+jobs:
+  # A workflow that fails to parse reports nothing at all, which reads exactly
+  # like a check that has not started yet. actionlint is the first lane.
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: actionlint
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
+  test:
+    name: build + vet + test + coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Say which toolchain ran: a green check that does not record the
+      # compiler behind it makes every figure measured under it unattributable.
+      - run: go version
+      - name: gofmt
+        run: |
+          drift=$(gofmt -l .)
+          if [ -n "$drift" ]; then echo "::error::not gofmt-clean:"; echo "$drift"; exit 1; fi
+      - name: build
+        run: CGO_ENABLED=0 go build ./...
+      - name: vet
+        run: go vet ./...
+      # The fuzz corpus under testdata/fuzz is replayed by every `go test`.
+      - name: test
+        run: go test -race -timeout 10m -coverprofile=coverage.out -coverpkg=./... ./...
+      # The gate is a Go program with its own test (internal/covercheck): ui is
+      # the View and the ViewModel and is held at 100%, the module at 90%. A
+      # package with no statements in the profile is an error, not a pass.
+      - name: coverage gate
+        run: go run ./internal/covercheck -profile coverage.out -min total=90 -min ui=100 -min model=100 -min collect=90
+      # The machine this runs on is a Mac and one lane is Windows: compile them.
+      - name: vet for darwin on arm64
+        run: GOOS=darwin GOARCH=arm64 go vet ./...
+      - name: vet for windows
+        run: GOOS=windows go vet ./...
+
+  # The browser half: GOOS=js GOARCH=wasm, through build.sh exactly as a user
+  # builds it, and the bundle is checked to contain what the page loads.
+  wasm:
+    name: wasm build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: vet the wasm packages
+        run: GOOS=js GOARCH=wasm go vet ./cmd/agentscope-web ./ui ./wire ./model
+      - name: build.sh
+        run: ./build.sh "$RUNNER_TEMP/dist"
+      - name: the bundle is complete
+        run: |
+          for f in index.html app.wasm wasm_exec.js boot.js fsguard.js style.css; do
+            test -s "$RUNNER_TEMP/dist/$f" || { echo "::error::missing $f"; exit 1; }
+          done
+          ls -l "$RUNNER_TEMP/dist"
+
+  # govulncheck judged by vulngate: govulncheck exits non-zero over findings it
+  # has decided this module does not call and zero over some it has, which is
+  # the whole reason vulngate exists. No `set -o pipefail`, deliberately; an
+  # unread scan is caught by the emptiness check and by vulngate.
+  vulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: govulncheck, judged by vulngate
+        run: |
+          set -eu
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/go-fleettools/fleettools/cmd/vulngate@v0.18.1
+          BIN="$(go env GOPATH)/bin"
+          "$BIN/govulncheck" -format json ./... > "$RUNNER_TEMP/vuln.json" || true
+          test -s "$RUNNER_TEMP/vuln.json" || { echo "::error::govulncheck wrote nothing at all"; exit 1; }
+          "$BIN/vulngate" -go "$(go env GOVERSION)" "$RUNNER_TEMP/vuln.json"
+
+  # The shared MVVM gate: fails on any direct widget-state mutation.
+  mvvm:
+    name: MVVM gate
+    uses: go-widgets/mvvmlint/.github/workflows/mvvmlint.yml@main
+
+  # The hand-drawn-UI gate, and a negative control proving it still bites.
+  bricolint:
+    name: hand-drawn-UI gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: install bricolint
+        run: go install github.com/go-widgets/bricolint/cmd/bricolint@v0.4.1
+      - name: guard against hand-drawn UI
+        run: go vet -vettool="$(go env GOPATH)/bin/bricolint" ./...
+      - name: negative control (the guard must bite)
+        run: BRICOLINT="$(go env GOPATH)/bin/bricolint" bash hack/bricolint-negative-control.sh

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"version\":1,\"sessions\":[{\"id\":\"x\",\"agents\":[{\"id\":\"y\",\"depth\":1e400}]}]} {\"version\":2}")

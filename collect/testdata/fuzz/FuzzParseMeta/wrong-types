@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"agentType\":{\"a\":1},\"description\":[1,2],\"toolUseId\":null,\"spawnDepth\":\"deep\"}")

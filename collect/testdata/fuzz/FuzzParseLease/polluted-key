@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"resource\":\"adding real HTTP/2 support: a note used as the key\",\"owner\":\"b1f9b4f5-0000-0000-0000-000000000000\",\"pid\":-1,\"note\":\"x\",\"acquired\":\"not a time\",\"expires\":\"2026-11-18T12:00:00+01:00\"}")

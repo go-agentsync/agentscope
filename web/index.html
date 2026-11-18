@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agentscope</title>
+<meta name="description" content="Live view of the Claude Code agent network on this machine: sessions, sub-agents, repository leases and tells.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="loading">
+    <p id="plabel">Loading agentscope...</p>
+    <div id="ptrack" class="indeterminate"><div id="pbar"></div></div>
+  </div>
+  <canvas id="screen" width="1680" height="940" hidden></canvas>
+  <div id="err"></div>
+  <script src="fsguard.js"></script>
+  <script src="wasm_exec.js"></script>
+  <script src="boot.js"></script>
+</body>
+</html>

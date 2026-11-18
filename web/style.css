@@ -1,10 +1,16 @@
-html, body { margin: 0; background: #0b0d12; color: #e6e8f0; font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+/* The page ground is the Slate theme's: slate-50 (light), the account page's
+   dark-bg (dark). The canvas paints everything else. */
+:root { --bg: #f8fafc; --ink: #0f172a; --muted: #64748b; --brand: #0079a8; color-scheme: light dark; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #12151a; --ink: #f1f5f9; --muted: #94a3b8; --brand: #4ea2c3; }
+}
+html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
 [hidden] { display: none !important; }
-#screen { display: block; margin: 0 auto; max-width: 100%; height: auto; background: #fff; }
+#screen { display: block; margin: 0 auto; max-width: 100%; height: auto; background: var(--bg); }
 #loading { max-width: 480px; margin: 24px auto; padding: 0 16px; }
-#plabel { color: #9aa0b4; margin: 0 0 8px; }
-#ptrack { height: 8px; background: #1b2130; border-radius: 999px; overflow: hidden; }
-#pbar { height: 100%; width: 0; background: linear-gradient(90deg, #14b8a6, #0ea5e9); transition: width .12s ease; }
+#plabel { color: var(--muted); margin: 0 0 8px; }
+#ptrack { height: 8px; background: color-mix(in srgb, var(--ink) 12%, transparent); border-radius: 999px; overflow: hidden; }
+#pbar { height: 100%; width: 0; background: var(--brand); transition: width .12s ease; }
 #ptrack.indeterminate #pbar { width: 40%; animation: slide 1.1s ease-in-out infinite; }
 @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
-#err { color: #ff5f57; font: 13px ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; padding: 8px 16px; }
+#err { color: #dc2626; font: 13px ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; padding: 8px 16px; }

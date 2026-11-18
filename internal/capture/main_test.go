@@ -30,7 +30,7 @@ func TestInsideGitTree(t *testing.T) {
 func TestRunRefusesAGitTreeBeforeStartingAnything(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, ".git"), 0o755)
-	err := run(context.Background(), "/definitely/not/chrome", "http://127.0.0.1:1/", filepath.Join(root, "x.png"), time.Second, 0, 10, 10, "")
+	err := run(context.Background(), "/definitely/not/chrome", "http://127.0.0.1:1/", filepath.Join(root, "x.png"), time.Second, 0, 10, 10, "", false)
 	if err == nil || !strings.Contains(err.Error(), "refusing") {
 		t.Fatalf("want a refusal, got %v", err)
 	}
@@ -41,7 +41,7 @@ func TestRunRefusesAGitTreeBeforeStartingAnything(t *testing.T) {
 
 func TestRunWithAMissingChrome(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "x.png")
-	if err := run(context.Background(), "/definitely/not/chrome", "http://127.0.0.1:1/", out, time.Second, 0, 10, 10, ""); err == nil {
+	if err := run(context.Background(), "/definitely/not/chrome", "http://127.0.0.1:1/", out, time.Second, 0, 10, 10, "", true); err == nil {
 		t.Fatal("a missing Chrome was accepted")
 	}
 }

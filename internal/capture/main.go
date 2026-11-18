@@ -83,7 +83,7 @@ func (d *cdp) call(ctx context.Context, sess, method string, params any) (json.R
 	}
 }
 
-func run(ctx context.Context, chrome, url, out string, wait time.Duration, scroll, w, h int, click string) error {
+func run(ctx context.Context, chrome, url, out string, wait time.Duration, scroll, w, h int, click string, dark bool) error {
 	if in, err := insideGitTree(out); err != nil || in {
 		return fmt.Errorf("refusing to write a capture inside a git work tree (%s): %v", out, err)
 	}
@@ -153,6 +153,15 @@ func run(ctx context.Context, chrome, url, out string, wait time.Duration, scrol
 	if _, err := d.call(ctx, s, "Emulation.setDeviceMetricsOverride", map[string]any{"width": w, "height": h, "deviceScaleFactor": 1, "mobile": false}); err != nil {
 		return err
 	}
+	// Always emulated, so a capture is the scheme asked for and not whatever the
+	// machine running it prefers.
+	scheme := "light"
+	if dark {
+		scheme = "dark"
+	}
+	if _, err := d.call(ctx, s, "Emulation.setEmulatedMedia", map[string]any{"features": []map[string]string{{"name": "prefers-color-scheme", "value": scheme}}}); err != nil {
+		return err
+	}
 	time.Sleep(wait)
 	if click != "" {
 		var x, y int
@@ -203,6 +212,7 @@ func main() {
 	wait := flag.Duration("wait", 6*time.Second, "how long the page gets before the capture")
 	scroll := flag.Int("scroll", 0, "wheel steps over the graph before the capture")
 	click := flag.String("click", "", "x,y of a click (e.g. a node) before the capture")
+	dark := flag.Bool("dark", false, "emulate prefers-color-scheme: dark")
 	w := flag.Int("w", 1680, "window width")
 	h := flag.Int("h", 960, "window height")
 	flag.Parse()
@@ -212,7 +222,7 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	if err := run(ctx, *chrome, *url, *out, *wait, *scroll, *w, *h, *click); err != nil {
+	if err := run(ctx, *chrome, *url, *out, *wait, *scroll, *w, *h, *click, *dark); err != nil {
 		fmt.Fprintln(os.Stderr, "capture:", err)
 		os.Exit(1)
 	}

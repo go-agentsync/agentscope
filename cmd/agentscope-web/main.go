@@ -111,7 +111,12 @@ func main() {
 		return nil
 	}))
 
-	do(func() bool { return true })
+	// The system's light/dark preference drives the Slate variant, now and when
+	// it changes.
+	dark := js.Global().Call("matchMedia", "(prefers-color-scheme: dark)")
+	follow := func() { do(func() bool { scene.VM().Dark.Set(dark.Get("matches").Bool()); return true }) }
+	dark.Call("addEventListener", "change", js.FuncOf(func(js.Value, []js.Value) any { follow(); return nil }))
+	follow()
 	go watch(scene, do)
 	select {} // park forever so the callbacks live
 }

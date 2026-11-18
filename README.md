@@ -79,6 +79,22 @@ newest 64 sessions, 6 sub-agents per session (then a "+N more" node) and 200
 repositories (live leases first); the table and the detail pane list everything
 and the status line says what the graph left out.
 
+### Look
+
+The look is the toolkit's **Slate** theme (`toolkit.Slate(brand, dark)`), modelled on
+the go-authn account page: a slate-50 page, white cards with a soft border and
+shadow, slate-900 ink, and the brand `#0079a8` as the accent (its hover and
+brand-ink variants are derived from the brand and match the page's). A header card
+holds the Iconoir logo, the name, a **connection chip** and **model-count chips**;
+the graph, the sessions table and the details each sit on their own card. Nothing is
+drawn by hand in this repository: the cards are `Frame.Card`, the pills `Chip` with
+`ChipBrand` / `ChipPlain`, the nodes and clusters `GraphView` with `CornerRadius`.
+**Light and dark follow the system** (`prefers-color-scheme`, read by the wasm host
+and followed when it changes); the graph's category palette is the Okabe-Ito order
+(colour-vision safe) with its lightness tuned per theme, which keeps the order but
+has not been run through a palette validator (none was at hand). The font is the
+toolkit's embedded one; it cannot load another.
+
 ### Models
 
 The model of a session and of each sub-agent is `message.model` of the **latest

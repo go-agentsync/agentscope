@@ -89,7 +89,7 @@ func TestViewModelApplyFiltersAndSelects(t *testing.T) {
 	if cells := r.Cells(); len(cells) != 7 || cells[1] != "aaaaaaaa" || cells[2] != "Opus 5.5" {
 		t.Errorf("cells %v", cells)
 	}
-	if !strings.Contains(vm.Status.Get(), "3 sessions (1 active in 10m0s) | 2 sub-agents | 3 repos (2 held) | 4 tells | 2 anomalies | models: ? 3 | Opus 1 | Sonnet 1 | 12:00:00") {
+	if !strings.Contains(vm.Status.Get(), "3 sessions (1 active in 10m0s) | 2 sub-agents | 3 repos (2 held) | 4 tells | 2 anomalies | 12:00:00") {
 		t.Errorf("status %q", vm.Status.Get())
 	}
 	// The first line of the detail pane, with nothing selected, is the anomalies.

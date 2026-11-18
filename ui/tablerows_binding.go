@@ -9,7 +9,7 @@ import (
 // Rows from an ObservableList): on every list change it rebuilds the table's
 // row slice by project and calls invalidate. It lives in a *_binding.go file,
 // the place mvvmlint reserves for exactly this glue, until mvvmtk grows
-// BindTableRows (go-widgets/mvvmtk issue filed with the v0.1.0 release).
+// BindTableRows (go-widgets/mvvmtk#44).
 func bindTableRows[T any](t *toolkit.Table, l *mvvm.ObservableList[T], project func(T) []string, invalidate func()) (unbind func()) {
 	sync := func() {
 		items := l.Slice()

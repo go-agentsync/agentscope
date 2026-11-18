@@ -171,11 +171,17 @@ control that proves the guard still bites.
 
 ## Known limits (v0.1.0)
 
-Tracked as issues: the graph does not scroll and sizes every cluster like the
-largest, so it is bounded as above; the wasm bundle is built with `build.sh`, not
-embedded in the binary; the table's cells are cut to fit because `Table` does not
-clip; Linux and Windows paths of `~/.claude` are the user's home on each, but only
-macOS has been exercised.
+Tracked as issues ([#2](https://github.com/go-agentsync/agentscope/issues/2),
+[#3](https://github.com/go-agentsync/agentscope/issues/3)): the wasm bundle is built
+with `build.sh`, not embedded in the binary or released; timings were not taken on a
+quiet machine; only macOS has been exercised; there are no org landing or docs
+surfaces yet. In the toolkit
+([go-widgets/toolkit#595](https://github.com/go-widgets/toolkit/issues/595)): the
+graph does not scroll and sizes every cluster like the largest, so it is bounded as
+above; a `Table` does not clip its cells (so they are cut to fit) and selects a row
+on click only with `MultiSelect`. In
+[go-widgets/mvvmtk#44](https://github.com/go-widgets/mvvmtk/issues/44): there is
+no `BindTableRows`, so that glue lives in `ui/tablerows_binding.go`.
 
 ## License
 

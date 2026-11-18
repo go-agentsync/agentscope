@@ -16,9 +16,9 @@ mkdir -p "$dist"
 
 goroot="$(go env GOROOT)"
 if [ -f "$goroot/lib/wasm/wasm_exec.js" ]; then
-  cp "$goroot/lib/wasm/wasm_exec.js" "$dist/wasm_exec.js"
+  cp -f "$goroot/lib/wasm/wasm_exec.js" "$dist/wasm_exec.js"
 elif [ -f "$goroot/misc/wasm/wasm_exec.js" ]; then
-  cp "$goroot/misc/wasm/wasm_exec.js" "$dist/wasm_exec.js"
+  cp -f "$goroot/misc/wasm/wasm_exec.js" "$dist/wasm_exec.js"
 else
   echo "error: wasm_exec.js not found under $goroot" >&2
   exit 1

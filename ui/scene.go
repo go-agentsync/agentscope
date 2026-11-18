@@ -68,7 +68,8 @@ func NewScene(w, h int) *Scene {
 		{Title: "Ag", Width: 28},
 	}, nil)
 	// A click selects a row only while MultiSelect is on (table.go OnEvent
-	// returns before selecting otherwise); a plain click still selects one row.
+	// returns before selecting otherwise; go-widgets/toolkit#595); a plain
+	// click still selects one row.
 	s.table.MultiSelect = true
 	s.detail = toolkit.NewListBox(nil)
 	s.status = toolkit.NewLabel("")

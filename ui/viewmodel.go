@@ -63,6 +63,7 @@ type ViewModel struct {
 	have     bool
 	allRows  []Row
 	notDrawn string
+	gd       graphData // the graph as built from the last snapshot
 }
 
 // NewViewModel returns a ViewModel showing nothing yet.
@@ -90,9 +91,10 @@ func (vm *ViewModel) Snapshot() (model.Snapshot, bool) { return vm.snap, vm.have
 func (vm *ViewModel) Apply(s model.Snapshot) {
 	vm.snap, vm.have = s, true
 	g := buildGraph(s)
+	vm.gd = g
 	setList(vm.Graph.Clusters, g.clusters)
 	setList(vm.Graph.Nodes, g.nodes)
-	setList(vm.Graph.Edges, g.edges)
+	vm.refreshEdges()
 	vm.notDrawn = ""
 	if g.sessionsNotDrawn > 0 || g.repoNotDrawn > 0 {
 		vm.notDrawn = " | not drawn: " + strconv.Itoa(g.sessionsNotDrawn) + " sessions, " + strconv.Itoa(g.repoNotDrawn) + " repos (see the table)"
@@ -166,10 +168,18 @@ func (vm *ViewModel) syncTableSel() {
 	vm.TableSel.Set(idx)
 }
 
-// onGraphSelected follows a click in the graph: the table and the detail pane.
+// onGraphSelected follows a click in the graph: the edges (focus), the table
+// and the detail pane.
 func (vm *ViewModel) onGraphSelected() {
+	vm.refreshEdges()
 	vm.syncTableSel()
 	vm.refreshDetail()
+}
+
+// refreshEdges sets the edge list for the current selection. Only edges
+// change, so the graph does not move.
+func (vm *ViewModel) refreshEdges() {
+	setList(vm.Graph.Edges, vm.gd.edges(vm.Graph.Selected.Get()))
 }
 
 // onTableSelected follows a click in the table: it selects the session's node.

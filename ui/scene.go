@@ -61,6 +61,7 @@ func NewScene(w, h int) *Scene {
 	s.conn = toolkit.NewLabel("")
 	s.graph = toolkit.NewGraphView(vm.Graph)
 	s.graph.ShowLegend = true
+	s.graph.NodeWidth = NodeWidth // wide enough for an org/repo or a task
 	s.table = toolkit.NewTable([]toolkit.TableColumn{
 		{Title: "State", Width: 58},
 		{Title: "Session", Width: 78},

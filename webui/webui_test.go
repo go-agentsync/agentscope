@@ -234,8 +234,20 @@ func TestResolveRoot(t *testing.T) {
 	if err != nil || root != mod || key != "v1.2.3" {
 		t.Fatalf("%q %q %v", root, key, err)
 	}
-	if _, _, err := resolveRoot(Options{Version: "v9.9.9"}, mc); err == nil || !strings.Contains(err.Error(), "--web DIR") {
-		t.Errorf("a version missing from the module cache: %v", err)
+	nowhere := Options{Version: "v9.9.9", Cwd: t.TempDir(), ExecDir: t.TempDir()}
+	if _, _, err := resolveRoot(nowhere, mc); err == nil || !strings.Contains(err.Error(), "module cache") || !strings.Contains(err.Error(), "--web DIR") {
+		t.Errorf("a version missing from the module cache, with no checkout: %v", err)
+	}
+	// ...but a checkout is a fallback for it, and the only source for +dirty.
+	for _, v := range []string{"v9.9.9", "v1.2.3+dirty", "v1.2.3"} {
+		root, key, err := resolveRoot(Options{Version: v, Cwd: mod}, t.TempDir())
+		if err != nil || root != mod || !strings.HasPrefix(key, "dev-") {
+			t.Errorf("version %s with a checkout: %q %q %v", v, root, key, err)
+		}
+	}
+	// A +dirty version never looks in the module cache, even where it exists.
+	if _, key, _ := resolveRoot(Options{Version: "v1.2.3+dirty", Cwd: mod}, mc); !strings.HasPrefix(key, "dev-") {
+		t.Errorf("+dirty used the module cache: %q", key)
 	}
 	// No version and no checkout above the given places.
 	if _, _, err := resolveRoot(Options{Version: "(devel)", Cwd: t.TempDir(), ExecDir: t.TempDir()}, mc); err == nil || !strings.Contains(err.Error(), "--web DIR") {

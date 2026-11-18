@@ -170,7 +170,10 @@ func resolveRoot(o Options, modcache string) (root, key string, err error) {
 	if version == "" {
 		version = binaryVersion()
 	}
-	if version != "" && version != "(devel)" {
+	// A binary built from a modified checkout is stamped "vX.Y.Z+dirty": that
+	// is not a version anyone can download, its sources are the checkout.
+	var missing error
+	if version != "" && version != "(devel)" && !strings.Contains(version, "+dirty") {
 		root = filepath.Join(modcache, escapeModule(ModulePath)+"@"+escapeModule(version))
 		if isUIRoot(root) {
 			if err := checkTrusted(root, modcache); err != nil {
@@ -178,7 +181,9 @@ func resolveRoot(o Options, modcache string) (root, key string, err error) {
 			}
 			return root, version, nil
 		}
-		return "", "", fmt.Errorf("the UI sources for %s %s are not in the module cache (%s): run `go mod download %s@%s`, or serve a UI with --web DIR", ModulePath, version, root, ModulePath, version)
+		// Not in the module cache: a binary built in a clean checkout of a tag is
+		// stamped with that tag too, so a checkout is still a place to look.
+		missing = fmt.Errorf("the UI sources for %s %s are not in the module cache (%s): run `go mod download %s@%s`, or serve a UI with --web DIR", ModulePath, version, root, ModulePath, version)
 	}
 	cwd, exe := o.Cwd, o.ExecDir
 	if cwd == "" {
@@ -190,6 +195,9 @@ func resolveRoot(o Options, modcache string) (root, key string, err error) {
 		}
 	}
 	if root = findCheckout(cwd, exe); root == "" {
+		if missing != nil {
+			return "", "", missing
+		}
 		return "", "", errors.New("this binary has no module version and is not inside an agentscope checkout, so it cannot find the UI sources: `go install " + ModulePath + "/cmd/agentscope@latest`, or serve a UI with --web DIR")
 	}
 	// Nothing under root is read before it is trusted.

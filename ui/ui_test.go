@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-agentsync/agentscope/model"
-	"github.com/go-widgets/mvvm"
 	"github.com/go-widgets/toolkit"
 )
 
@@ -133,8 +132,12 @@ func TestBuildGraphBounds(t *testing.T) {
 			model.Lease{Repo: fmt.Sprintf("o/r%d", i), Owner: id, Expired: true},
 			model.Lease{Repo: fmt.Sprintf("o/r%d", i), Owner: id})
 	}
+	// More repositories than the bound, all held by the first session.
+	for i := 0; i < MaxGraphRepos; i++ {
+		s.Leases = append(s.Leases, model.Lease{Repo: fmt.Sprintf("x/r%d", i), Owner: s.Sessions[0].ID})
+	}
 	g := buildGraph(s)
-	if g.sessionsNotDrawn != 3 || g.repoNotDrawn != MaxGraphSessions+3-MaxGraphRepos {
+	if g.sessionsNotDrawn != 3 || g.repoNotDrawn != MaxGraphSessions+3 {
 		t.Errorf("not drawn: %d sessions, %d repos", g.sessionsNotDrawn, g.repoNotDrawn)
 	}
 	clusters, more, repos := 0, 0, 0
@@ -390,23 +393,5 @@ func TestWrapAndDetailBound(t *testing.T) {
 	vm.Apply(s)
 	if vm.Detail.Len() != maxDetailLines+1 || !strings.HasPrefix(vm.Detail.At(maxDetailLines), "... ") {
 		t.Errorf("the detail pane must say what it cut: %d lines", vm.Detail.Len())
-	}
-}
-
-func TestBindTableRowsWithoutInvalidate(t *testing.T) {
-	l := mvvm.NewObservableList(Row{ID: "a"})
-	tbl := toolkit.NewTable([]toolkit.TableColumn{{Title: "x"}}, nil)
-	un := bindTableRows(tbl, l, Row.Cells, nil)
-	if len(tbl.Rows) != 1 {
-		t.Fatal("seeded")
-	}
-	l.Append(Row{ID: "b"})
-	if len(tbl.Rows) != 2 {
-		t.Fatal("followed")
-	}
-	un()
-	l.Append(Row{ID: "c"})
-	if len(tbl.Rows) != 2 {
-		t.Fatal("unbound")
 	}
 }

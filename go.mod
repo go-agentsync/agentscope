@@ -3,18 +3,18 @@ module github.com/go-agentsync/agentscope
 go 1.27.4
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/go-agentsync/agentsync v0.9.0
 	github.com/go-widgets/mvvm v0.15.0
-	github.com/go-widgets/mvvmtk v0.15.0
+	github.com/go-widgets/mvvmtk v0.16.0
 	github.com/go-widgets/painter v0.17.0
-	github.com/go-widgets/toolkit v0.380.0
+	github.com/go-widgets/toolkit v0.382.0
 	github.com/grpc-transports/websocket v0.2.0
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/grpc v1.85.0
 )
 
 require (
-	github.com/coder/websocket v1.8.15 // indirect
 	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
 	github.com/go-crdt/crdt v0.59.0 // indirect
 	github.com/go-gfx/gfx v0.41.0 // indirect

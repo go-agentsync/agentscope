@@ -10,19 +10,20 @@ import (
 	"github.com/go-widgets/toolkit"
 )
 
-// The GraphView lays every cluster out at the size of the largest one, so the
-// number of members a cluster may have is what keeps the picture on one
-// screen. These bounds are the screen's, not the collector's: the table and
-// the detail pane list everything.
+// The GraphView sizes each cluster by its own members and scrolls when they
+// overflow, so these are safety bounds on what is drawn, not a fit to the
+// screen. They are the screen's, not the collector's: the table and the detail
+// pane list everything.
 const (
 	// MaxGraphSessions is how many session clusters are drawn, newest first.
-	MaxGraphSessions = 32
+	MaxGraphSessions = 64
 	// MaxGraphAgents is how many sub-agent nodes a session cluster shows; the
 	// rest are one "+N more" node.
-	MaxGraphAgents = 3
+	MaxGraphAgents = 6
 	// MaxGraphRepos is how many repositories the repositories cluster shows,
-	// live leases first.
-	MaxGraphRepos = 9
+	// live leases first. The graph scrolls, so this is a safety bound on the
+	// drawing, not a fit to the screen.
+	MaxGraphRepos = 200
 )
 
 // Node and edge id prefixes. The ids are what the graph's Selected observable

@@ -48,6 +48,70 @@ func stateText(st tstate) string {
 	return s
 }
 
+func TestParseLineReadsTheModelOfAssistantEntriesOnly(t *testing.T) {
+	var st tstate
+	for _, l := range []string{
+		`{"type":"assistant","timestamp":"2026-11-18T10:00:00Z","message":{"model":"claude-opus-5-5","content":[{"type":"text","text":"SECRET REPLY"}]}}`,
+		`{"type":"user","timestamp":"2026-11-18T10:01:00Z","message":{"model":"claude-user-0-0","content":"SECRET PROMPT"}}`,
+		`{"type":"assistant","timestamp":"2026-11-18T10:05:00Z","message":{"model":"claude-sonnet-5-5"}}`,
+		`{"type":"assistant","timestamp":"2026-11-18T10:03:00Z","message":{"model":"claude-opus-5-5"}}`,
+		`{"type":"assistant","timestamp":"2026-11-18T10:06:00Z","message":{"model":"<synthetic>"}}`,
+		`{"type":"assistant","message":"a string"}`,
+		`{"type":"assistant","timestamp":"2026-11-18T10:07:00Z","message":{"content":[]}}`,
+	} {
+		parseLine([]byte(l), &st)
+	}
+	if len(st.models) != 3 {
+		t.Fatalf("models %+v: the user entry and the entries with no model must not count", st.models)
+	}
+	// Newest first: <synthetic> 10:06, sonnet 10:05, opus 10:03 (the later opus
+	// entry moved it up, the earlier one did not move it back).
+	if st.models[0].id != "<synthetic>" || st.models[1].id != "claude-sonnet-5-5" || st.models[2].id != "claude-opus-5-5" {
+		t.Errorf("order %+v", st.models)
+	}
+	if want := time.Date(2026, 11, 18, 10, 3, 0, 0, time.UTC); !st.models[2].last.Equal(want) {
+		t.Errorf("opus last %v", st.models[2].last)
+	}
+	for _, m := range st.models {
+		if strings.Contains(m.id, "SECRET") {
+			t.Error("content leaked into the models")
+		}
+	}
+	latest, all := modelsOf(&st, time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC))
+	if latest != "claude-sonnet-5-5" || len(all) != 3 {
+		t.Errorf("the placeholder must not be the latest model: %q %v", latest, all)
+	}
+	if l, a := modelsOf(&st, time.Date(2026, 11, 19, 0, 0, 0, 0, time.UTC)); l != "" || a != nil {
+		t.Errorf("models older than the horizon were kept: %q %v", l, a)
+	}
+	only := tstate{}
+	only.noteModel("<synthetic>", time.Time{})
+	if l, a := modelsOf(&only, time.Time{}); l != "" || len(a) != 1 {
+		t.Errorf("only a placeholder: %q %v", l, a)
+	}
+}
+
+func TestNoteModelIsBoundedAndUsesFilePositionWithoutATimestamp(t *testing.T) {
+	var st tstate
+	st.lastTS = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < maxModels+10; i++ {
+		st.noteModel("m"+strings.Repeat("x", i), time.Date(2026, 1, 2, 0, i, 0, 0, time.UTC))
+	}
+	if len(st.models) > maxModels {
+		t.Fatalf("%d models kept", len(st.models))
+	}
+	st.noteModel("untimed", time.Time{})
+	found := false
+	for _, m := range st.models {
+		if m.id == "untimed" && m.last.Equal(st.lastTS) {
+			found = true
+		}
+	}
+	if !found && len(st.models) == maxModels {
+		t.Log("the untimed entry was the oldest and was dropped")
+	}
+}
+
 func TestParseLineRejectsGarbage(t *testing.T) {
 	for _, l := range []string{``, `not json`, `{"type":`, `[1,2`, "\x00\x01"} {
 		var st tstate

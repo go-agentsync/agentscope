@@ -29,6 +29,14 @@ func FuzzParseLine(f *testing.F) {
 				t.Fatalf("unbounded field of %d bytes", len(s))
 			}
 		}
+		if len(st.models) > maxModels {
+			t.Fatalf("unbounded models: %d", len(st.models))
+		}
+		for _, m := range st.models {
+			if len(m.id) > 80 {
+				t.Fatalf("unbounded model id of %d bytes", len(m.id))
+			}
+		}
 		if len(st.sentTo) > maxSentTo+1 {
 			t.Fatalf("unbounded recipients: %d", len(st.sentTo))
 		}

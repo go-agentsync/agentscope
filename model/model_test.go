@@ -73,6 +73,54 @@ func TestTaskPriority(t *testing.T) {
 	}
 }
 
+func TestModelNames(t *testing.T) {
+	for id, want := range map[string]string{
+		"claude-opus-5-5":               "Opus 5.5",
+		"claude-sonnet-5-5":             "Sonnet 5.5",
+		"claude-haiku-5-5":              "Haiku 5.5",
+		"claude-fable-5-2":              "Fable 5.2",
+		"claude-opus-5":                 "Opus 5",
+		"claude-opus-4-1-20250805":      "Opus 4.1",
+		"claude-sonnet-4-20250514":      "Sonnet 4",
+		"claude-opus-5-5[1m]":           "Opus 5.5",
+		"<synthetic>":                   "?",
+		"":                              "?",
+		"gpt-4":                         "?",
+		"claude-mystery-9":              "?",
+		"claude-opus-5-5-extra-garbage": "?",
+		"CLAUDE-OPUS-5-5":               "?", // case is not guessed
+	} {
+		name, ok := ModelName(id)
+		if name != want || ok != (want != "?") {
+			t.Errorf("ModelName(%q) = %q, %v; want %q", id, name, ok, want)
+		}
+	}
+	if ModelFamily("claude-sonnet-5-5") != "Sonnet" || ModelFamily("nope") != "?" {
+		t.Error("ModelFamily")
+	}
+	if ModelLabel("claude-opus-5-5") != "Opus 5.5 (claude-opus-5-5)" || ModelLabel("x") != "? (x)" || ModelLabel("") != "? (none seen)" {
+		t.Error("ModelLabel")
+	}
+}
+
+func TestModelCounts(t *testing.T) {
+	s := Snapshot{Sessions: []Session{
+		{Model: "claude-opus-5-5", Agents: []Agent{{Model: "claude-sonnet-5-5"}, {Model: "claude-sonnet-5-5"}, {}}},
+		{Model: "claude-haiku-5-5", Agents: []Agent{{Model: "claude-sonnet-5-5"}}},
+		{Model: "claude-opus-5-5"},
+	}}
+	got := s.ModelCounts()
+	want := []ModelCount{{"Sonnet", 3}, {"Opus", 2}, {"?", 1}, {"Haiku", 1}}
+	if len(got) != len(want) {
+		t.Fatalf("%v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("%d: %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
 func TestShortIDAndTruncate(t *testing.T) {
 	if ShortID("0123456789") != "01234567" || ShortID("abc") != "abc" {
 		t.Error("ShortID")

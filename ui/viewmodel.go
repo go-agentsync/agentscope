@@ -22,23 +22,41 @@ type Row struct {
 	Task  string
 	Last  string
 	Agent string // sub-agent count
+	Model string // short family name ("Opus 5.5"), or "?" when unknown or unseen
 }
 
 // Cell widths, in characters, that fit the table's columns: the Table paints
 // a cell's text without clipping it, so the text is cut to fit.
 const (
 	repoChars = 22
-	taskChars = 38
+	taskChars = 34
 )
+
+// modelShort is the table's name for a model id: the family and version, or
+// "?" for a missing or unrecognised one (the raw id is in the detail pane).
+func modelShort(id string) string {
+	name, _ := model.ModelName(id)
+	return name
+}
+
+// modelCountsText is "Opus 9 | Sonnet 31 | Haiku 3" over the listed sessions and
+// sub-agents, or "" when there are none.
+func modelCountsText(s model.Snapshot) string {
+	var parts []string
+	for _, c := range s.ModelCounts() {
+		parts = append(parts, c.Family+" "+strconv.Itoa(c.N))
+	}
+	return strings.Join(parts, " | ")
+}
 
 // Cells is the row as the table shows it.
 func (r Row) Cells() []string {
-	return []string{r.State, r.ID, model.Truncate(r.Repo, repoChars), model.Truncate(r.Task, taskChars), r.Last, r.Agent}
+	return []string{r.State, r.ID, r.Model, model.Truncate(r.Repo, repoChars), model.Truncate(r.Task, taskChars), r.Last, r.Agent}
 }
 
 // Text is the row's whole text, which is what the query is matched against.
 func (r Row) Text() string {
-	return strings.Join([]string{r.State, r.ID, r.Repo, r.Task, r.Last, r.Agent}, " ")
+	return strings.Join([]string{r.State, r.ID, r.Model, r.Repo, r.Task, r.Last, r.Agent}, " ")
 }
 
 // ViewModel is the whole screen's state.
@@ -117,7 +135,7 @@ func (vm *ViewModel) Apply(s model.Snapshot) {
 	c := s.Counts()
 	vm.Status.Set(strconv.Itoa(c.Sessions) + " sessions (" + strconv.Itoa(c.Active) + " active in " + s.ActiveFor + ") | " +
 		strconv.Itoa(c.Agents) + " sub-agents | " + strconv.Itoa(c.Repos) + " repos (" + strconv.Itoa(c.Held) + " held) | " +
-		strconv.Itoa(c.Tells) + " tells | " + strconv.Itoa(c.Anomalies) + " anomalies | " + s.At.Format("15:04:05") + vm.notDrawn)
+		strconv.Itoa(c.Tells) + " tells | " + strconv.Itoa(c.Anomalies) + " anomalies | models: " + modelCountsText(s) + " | " + s.At.Format("15:04:05") + vm.notDrawn)
 }
 
 // rebuildGraph maps the last snapshot onto the graph, with the orgs that are
@@ -178,7 +196,7 @@ func (vm *ViewModel) row(s model.Snapshot, se model.Session) Row {
 	if repo == "" {
 		repo = se.CwdRepo
 	}
-	return Row{ID: se.Short, State: state, Repo: repo, Task: s.Task(se), Last: ago(s.At, se.LastActivity), Agent: strconv.Itoa(len(se.Agents))}
+	return Row{ID: se.Short, State: state, Repo: repo, Task: s.Task(se), Last: ago(s.At, se.LastActivity), Agent: strconv.Itoa(len(se.Agents)), Model: modelShort(se.Model)}
 }
 
 // refreshRows applies the query to the full row set.

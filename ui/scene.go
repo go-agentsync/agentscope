@@ -1,40 +1,52 @@
 package ui
 
 import (
+	"github.com/go-widgets/mvvm"
 	"github.com/go-widgets/mvvmtk"
 	"github.com/go-widgets/painter"
 	"github.com/go-widgets/toolkit"
+	"github.com/go-widgets/toolkit/iconoir"
 )
 
 // Surface is the canvas size. Fixed: the graph, the table and the detail pane
-// each sit in a fixed box and scroll or clip inside it.
+// each sit in a fixed card and scroll or clip inside it.
 const (
 	SurfaceW = 1680
 	SurfaceH = 940
 )
 
 const (
-	margin   = 8
-	gap      = 6
-	searchH  = 26
-	connW    = 150
-	expiredW = 150
-	rightW   = 720
-	tableMin = 1 // flex weight of the table
-	detailFx = 1 // flex weight of the detail pane
+	margin    = 16
+	gap       = 12
+	headerH   = 56
+	connW     = 104
+	chipW     = 104
+	searchW   = 360
+	expiredW  = 150
+	iconW     = 30
+	titleW    = 120
+	rightW    = 720
+	cardPad   = 12
+	nodeRound = 6
 )
 
+// Brand is agentscope's accent: the go-authn account page's brand colour.
+var Brand = toolkit.RGB(0x00, 0x79, 0xA8)
+
 // Scene is the View: the widgets, their layout, and the bindings to the
-// ViewModel. It never assigns a widget's state field itself.
+// ViewModel. It never assigns a widget's state field itself, and draws nothing
+// by hand: every surface is a toolkit widget (Frame cards, Chips, the graph).
 type Scene struct {
 	w, h  int
 	theme *toolkit.Theme
 	vm    *ViewModel
 
 	search *toolkit.SearchEntry
-	conn   *toolkit.Label
 	// expired is the "show expired leases" toggle.
 	expired *toolkit.CheckButton
+	title   *toolkit.Label
+	conn    *toolkit.Chip // the connection-state chip
+	models  [ModelChipSlots]*toolkit.Chip
 	graph   *toolkit.GraphView
 	table   *toolkit.Table
 	detail  *toolkit.ListBox
@@ -55,17 +67,29 @@ type Scene struct {
 func NewScene(w, h int) *Scene {
 	_ = toolkit.UseOpenTypeText()
 	vm := NewViewModel()
-	s := &Scene{w: w, h: h, theme: toolkit.DefaultLight(), vm: vm}
+	s := &Scene{w: w, h: h, theme: toolkit.Slate(Brand, false), vm: vm}
 	invalidate := func() { s.dirty = true }
 
 	s.search = toolkit.NewSearchEntry("")
 	// Without an Icon the entry draws "?" as a stand-in for the magnifier.
 	s.search.Icon = toolkit.DrawIconSearch
-	s.conn = toolkit.NewLabel("")
 	s.expired = toolkit.NewCheckButton("expired leases", false)
+	s.title = toolkit.NewLabel("agentscope")
+	s.title.FontSize = 20
+	logo := toolkit.NewStatusIcon(iconoir.Drawer("network-right"))
+	connChip := toolkit.NewChip("")
+	connChip.Style = toolkit.ChipBrand
+	s.conn = connChip
+	modelChips := &s.models
+	for i := range modelChips {
+		modelChips[i] = toolkit.NewChip("")
+		modelChips[i].Style = toolkit.ChipPlain
+	}
+
 	s.graph = toolkit.NewGraphView(vm.Graph)
 	s.graph.ShowLegend = true
 	s.graph.NodeWidth = NodeWidth // wide enough for an org/repo or a task
+	s.graph.CornerRadius = nodeRound
 	// Enter, or a second click on a selected node, activates it: an org node
 	// expands or collapses (the expansion is ViewModel state).
 	s.graph.OnActivate = vm.ToggleOrg
@@ -87,7 +111,7 @@ func NewScene(w, h int) *Scene {
 
 	s.unbind = append(s.unbind,
 		mvvmtk.BindText(s.search, vm.Query, invalidate),
-		mvvmtk.BindLabel(s.conn, vm.Conn, invalidate),
+		bindChip(connChip, vm.Conn, invalidate),
 		mvvmtk.BindChecked(s.expired, vm.ShowExpired, invalidate),
 		vm.Expanded.SubscribeChanged(invalidate),
 		mvvmtk.BindLabel(s.status, vm.Status, invalidate),
@@ -99,34 +123,106 @@ func NewScene(w, h int) *Scene {
 		vm.Graph.Edges.SubscribeChanged(invalidate),
 		vm.Graph.Nodes.SubscribeChanged(invalidate),
 		vm.Graph.Clusters.SubscribeChanged(invalidate),
+		vm.Dark.SubscribeChanged(func() { s.applyTheme(); invalidate() }),
 	)
+	for i, c := range modelChips {
+		s.unbind = append(s.unbind, bindChip(c, vm.ModelChips[i], invalidate))
+	}
 
+	// Header card: the logo, the name, the connection chip, the model-count
+	// chips, then the search and the toggle on the right.
 	top := toolkit.NewHBox()
-	top.Spacing = gap
-	top.AddFlex(s.search, 1)
+	top.Spacing = gap / 2
+	top.AddFixed(logo, iconW)
+	top.AddFixed(s.title, titleW)
+	top.AddFixed(connChip, connW)
+	for _, c := range modelChips {
+		top.AddFixed(c, chipW)
+	}
+	top.AddFlex(toolkit.NewLabel(""), 1)
+	top.AddFixed(s.search, searchW)
 	top.AddFixed(s.expired, expiredW)
-	top.AddFixed(s.conn, connW)
+	header := card("", top, cardPad)
+
+	graphCard := card("", s.graph, cardPad/2)
+	tableCard := card("Sessions", s.table, cardPad)
+	detailCard := card("Details", s.detail, cardPad)
 
 	side := toolkit.NewVBox()
 	side.Spacing = gap
-	side.AddFlex(s.table, tableMin)
-	side.AddFlex(s.detail, detailFx)
+	side.AddFlex(tableCard, 1)
+	side.AddFlex(detailCard, 1)
 
 	body := toolkit.NewHBox()
 	body.Spacing = gap
-	body.AddFlex(s.graph, 1)
+	body.AddFlex(graphCard, 1)
 	body.AddFixed(side, rightW)
 
 	s.root = toolkit.NewVBox()
 	s.root.Spacing = gap
-	s.root.AddFixed(top, searchH)
+	s.root.AddFixed(header, headerH)
 	s.root.AddFlex(body, 1)
 	s.root.AddFixed(s.status, toolkit.StatusbarH)
 	s.root.SetBounds(toolkit.Rect{X: margin, Y: margin, W: w - 2*margin, H: h - 2*margin})
 
 	s.clickables = []toolkit.Widget{s.search, s.expired, s.graph, s.table, s.detail}
+	s.applyTheme()
 	s.dirty = true
 	return s
+}
+
+// bindChip one-way-binds a chip's text to an observable through mvvm.BindField
+// (a chip has no edit callback; BindField wants a hook slot, so it gets an unused
+// one). mvvmtk has no chip binder yet.
+func bindChip(c *toolkit.Chip, obs *mvvm.Observable[string], invalidate func()) (unbind func()) {
+	var unused func(string)
+	return mvvm.BindField(obs, &c.Text, &unused, invalidate)
+}
+
+// card wraps child in a card: a rounded surface with a soft border and shadow
+// and, with a title, a heading over a hairline.
+func card(title string, child toolkit.Widget, pad int) *toolkit.Frame {
+	f := toolkit.NewFrame(child)
+	f.Card = true
+	f.Title = title
+	f.Padding = pad
+	return f
+}
+
+// applyTheme sets the Slate theme of the system's preference, and what depends
+// on it: the graph's category palette and the title's brand ink.
+func (s *Scene) applyTheme() {
+	dark := s.vm.Dark.Get()
+	s.theme = toolkit.Slate(Brand, dark)
+	s.graph.Palette = Palette(dark)
+	s.title.Ink = s.theme.Extra["brand_ink"]
+}
+
+// Palette is the graph's category palette: the Okabe-Ito order, which is safe
+// under the common colour-vision deficiencies, with its lightness tuned to the
+// page: eased toward the Slate ground in light, lifted a little in dark so a pill
+// keeps its contrast against the dark card. The order is what the legend and the
+// colour assignment (by first appearance) rely on, so it is never reordered.
+func Palette(dark bool) []toolkit.RGBA {
+	base := []toolkit.RGBA{
+		toolkit.RGB(0xE6, 0x9F, 0x00), toolkit.RGB(0x56, 0xB4, 0xE9), toolkit.RGB(0x00, 0x9E, 0x73), toolkit.RGB(0xF0, 0xE4, 0x42),
+		toolkit.RGB(0x00, 0x72, 0xB2), toolkit.RGB(0xD5, 0x5E, 0x00), toolkit.RGB(0xCC, 0x79, 0xA7), toolkit.RGB(0x99, 0x99, 0x99),
+	}
+	out := make([]toolkit.RGBA, len(base))
+	for i, c := range base {
+		if dark {
+			out[i] = mix(c, toolkit.RGB(0xFF, 0xFF, 0xFF), 0.12)
+		} else {
+			out[i] = mix(c, toolkit.RGB(0x0F, 0x17, 0x2A), 0.06)
+		}
+	}
+	return out
+}
+
+// mix is c moved toward to by t (0..1).
+func mix(c, to toolkit.RGBA, t float64) toolkit.RGBA {
+	f := func(a, b uint8) uint8 { return uint8(float64(a)*(1-t) + float64(b)*t + 0.5) }
+	return toolkit.RGBA{R: f(c.R, to.R), G: f(c.G, to.G), B: f(c.B, to.B), A: 0xFF}
 }
 
 // VM is the ViewModel the host feeds snapshots to.

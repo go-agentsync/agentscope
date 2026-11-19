@@ -14,6 +14,9 @@ import (
 	"github.com/go-widgets/toolkit"
 )
 
+// ModelChipSlots is how many model families the header shows chips for.
+const ModelChipSlots = 3
+
 // Row is one line of the sessions table.
 type Row struct {
 	ID    string // session short id
@@ -37,16 +40,6 @@ const (
 func modelShort(id string) string {
 	name, _ := model.ModelName(id)
 	return name
-}
-
-// modelCountsText is "Opus 9 | Sonnet 31 | Haiku 3" over the listed sessions and
-// sub-agents, or "" when there are none.
-func modelCountsText(s model.Snapshot) string {
-	var parts []string
-	for _, c := range s.ModelCounts() {
-		parts = append(parts, c.Family+" "+strconv.Itoa(c.N))
-	}
-	return strings.Join(parts, " | ")
 }
 
 // Cells is the row as the table shows it.
@@ -81,6 +74,12 @@ type ViewModel struct {
 	// the "other repositories" cluster that are open.
 	ShowExpired *mvvm.Observable[bool]
 	Expanded    *mvvm.ObservableList[string]
+	// Dark is the system's colour-scheme preference, set by the host (a
+	// browser's prefers-color-scheme) and followed when it changes.
+	Dark *mvvm.Observable[bool]
+	// ModelChips are the header's model-count chips: the three most used model
+	// families ("Sonnet 29"), "" for a slot with none.
+	ModelChips [ModelChipSlots]*mvvm.Observable[string]
 
 	snap     model.Snapshot
 	have     bool
@@ -101,7 +100,11 @@ func NewViewModel() *ViewModel {
 		Conn:     mvvm.NewObservable("connecting"),
 
 		ShowExpired: mvvm.NewObservable(false),
+		Dark:        mvvm.NewObservable(false),
 		Expanded:    mvvm.NewObservableList[string](),
+	}
+	for i := range vm.ModelChips {
+		vm.ModelChips[i] = mvvm.NewObservable("")
 	}
 	vm.Query.SubscribeChanged(vm.onQuery)
 	vm.ShowExpired.SubscribeChanged(vm.refreshEdges)
@@ -133,9 +136,17 @@ func (vm *ViewModel) Apply(s model.Snapshot) {
 	vm.refreshDetail()
 
 	c := s.Counts()
+	counts := s.ModelCounts()
+	for i, chip := range vm.ModelChips {
+		text := ""
+		if i < len(counts) {
+			text = counts[i].Family + " " + strconv.Itoa(counts[i].N)
+		}
+		chip.Set(text)
+	}
 	vm.Status.Set(strconv.Itoa(c.Sessions) + " sessions (" + strconv.Itoa(c.Active) + " active in " + s.ActiveFor + ") | " +
 		strconv.Itoa(c.Agents) + " sub-agents | " + strconv.Itoa(c.Repos) + " repos (" + strconv.Itoa(c.Held) + " held) | " +
-		strconv.Itoa(c.Tells) + " tells | " + strconv.Itoa(c.Anomalies) + " anomalies | models: " + modelCountsText(s) + " | " + s.At.Format("15:04:05") + vm.notDrawn)
+		strconv.Itoa(c.Tells) + " tells | " + strconv.Itoa(c.Anomalies) + " anomalies | " + s.At.Format("15:04:05") + vm.notDrawn)
 }
 
 // rebuildGraph maps the last snapshot onto the graph, with the orgs that are

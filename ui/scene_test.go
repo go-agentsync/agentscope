@@ -214,18 +214,84 @@ func TestSceneCheckButtonAndEscapeAndActivate(t *testing.T) {
 
 func TestSceneConnectionLabelAndStatusAreBound(t *testing.T) {
 	s := newScene(t)
-	if s.conn.Text().Get() != "connecting" {
-		t.Errorf("conn %q", s.conn.Text().Get())
+	if s.conn.Text != "connecting" {
+		t.Errorf("conn %q", s.conn.Text)
 	}
 	s.VM().Conn.Set("lost: eof")
-	if s.conn.Text().Get() != "lost: eof" {
+	if s.conn.Text != "lost: eof" {
 		t.Error("conn not followed")
+	}
+	// The model chips follow the snapshot: the most used families, then nothing.
+	s.VM().Apply(snap())
+	if s.models[0].Text != "? 3" || s.models[1].Text != "Opus 1" || s.models[2].Text != "Sonnet 1" {
+		t.Errorf("model chips %q %q %q", s.models[0].Text, s.models[1].Text, s.models[2].Text)
+	}
+	one := snap()
+	one.Sessions = one.Sessions[:1]
+	one.Sessions[0].Agents = nil
+	s.VM().Apply(one)
+	if s.models[0].Text != "Opus 1" || s.models[1].Text != "" || s.models[2].Text != "" {
+		t.Errorf("slots with no family must be empty: %q %q %q", s.models[0].Text, s.models[1].Text, s.models[2].Text)
 	}
 	if s.status.Text().Get() == "" {
 		t.Error("status not bound")
 	}
 	for _, u := range s.unbind {
 		u()
+	}
+}
+
+func TestDarkFollowsThePreferenceAndRethemesTheScene(t *testing.T) {
+	s := newScene(t)
+	light := pixels(s)
+	if s.theme.Background != toolkit.Slate(Brand, false).Background {
+		t.Fatal("the scene starts in the light Slate theme")
+	}
+	lightPal := s.graph.Palette
+	s.Dirty()
+	s.VM().Dark.Set(true)
+	if !s.Dirty() {
+		t.Error("a theme change must repaint")
+	}
+	if s.theme.Background != toolkit.Slate(Brand, true).Background {
+		t.Error("the scene did not take the dark theme")
+	}
+	dark := pixels(s)
+	if dark[0] == light[0] && dark[1] == light[1] && dark[2] == light[2] {
+		t.Error("the page ground did not change")
+	}
+	if len(s.graph.Palette) != len(lightPal) || s.graph.Palette[0] == lightPal[0] {
+		t.Error("the graph palette did not follow the theme")
+	}
+	if s.title.Ink != toolkit.Slate(Brand, true).Extra["brand_ink"] {
+		t.Error("the title is not in the dark brand ink")
+	}
+	s.VM().Dark.Set(false)
+	if s.theme.Background != toolkit.Slate(Brand, false).Background {
+		t.Error("back to light")
+	}
+}
+
+func TestPaletteKeepsTheColourBlindSafeOrder(t *testing.T) {
+	oi := []toolkit.RGBA{{R: 0xE6, G: 0x9F, B: 0x00}, {R: 0x56, G: 0xB4, B: 0xE9}, {R: 0x00, G: 0x9E, B: 0x73}, {R: 0xF0, G: 0xE4, B: 0x42},
+		{R: 0x00, G: 0x72, B: 0xB2}, {R: 0xD5, G: 0x5E, B: 0x00}, {R: 0xCC, G: 0x79, B: 0xA7}, {R: 0x99, G: 0x99, B: 0x99}}
+	for _, dark := range []bool{false, true} {
+		pal := Palette(dark)
+		if len(pal) != len(oi) {
+			t.Fatalf("%d colours", len(pal))
+		}
+		for i, c := range pal {
+			// Tuned, not replaced: each colour stays within 40 per channel of its
+			// Okabe-Ito original, so the hue order a viewer learns is unchanged.
+			for _, d := range []int{int(c.R) - int(oi[i].R), int(c.G) - int(oi[i].G), int(c.B) - int(oi[i].B)} {
+				if d > 40 || d < -40 {
+					t.Errorf("dark=%v colour %d moved by %d from Okabe-Ito", dark, i, d)
+				}
+			}
+			if c.A != 0xFF {
+				t.Errorf("colour %d is not opaque", i)
+			}
+		}
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 const (
 	TabGraph = iota
 	TabQuota
+	TabGuardrails
 )
 
 // ModelChipSlots is how many model families the header shows chips for.
@@ -100,7 +101,9 @@ type ViewModel struct {
 	// families ("Sonnet 29"), "" for a slot with none.
 	ModelChips [ModelChipSlots]*mvvm.Observable[string]
 
-	// Tab is the shown tab: TabGraph or TabQuota.
+	// Guard is the Guardrails tab's state (see guardrails.go).
+	Guard *GuardState
+	// Tab is the shown tab: TabGraph, TabQuota or TabGuardrails.
 	Tab *mvvm.Observable[int]
 	// PanelOpen is whether the side panel (the sessions table and the details)
 	// is open over the graph; it starts closed, TogglePanel flips it, and
@@ -166,6 +169,7 @@ func NewViewModel() *ViewModel {
 		Dark:        mvvm.NewObservable(false),
 		Expanded:    mvvm.NewObservableList[string](),
 
+		Guard:          newGuardState(),
 		Tab:            mvvm.NewObservable(TabGraph),
 		PanelOpen:      mvvm.NewObservable(false),
 		Span:           mvvm.NewObservable(SpanWeek),
@@ -270,6 +274,7 @@ func (vm *ViewModel) Snapshot() (model.Snapshot, bool) { return vm.snap, vm.have
 func (vm *ViewModel) Apply(s model.Snapshot) {
 	vm.snap, vm.have = s, true
 	vm.Usage.Set(s.Usage)
+	vm.Guard.Data.Set(s.Guardrails)
 	vm.rebuildGraph()
 
 	vm.allRows = vm.allRows[:0]

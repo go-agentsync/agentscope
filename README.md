@@ -30,6 +30,8 @@ captures never go inside a repository.
 | `~/.claude/projects/*/<session>/subagents/agent-*.meta.json` | agent type, description, spawn depth |
 | `~/.claude/projects/**/*.jsonl` (the Quota tab) | per assistant message: timestamp, `message.id`, `message.model`, `usage.output_tokens`, `usage.cache_read_input_tokens`, summed per 10 minutes and model family |
 | `aiquota status -o json` (the Quota tab) | the official usage windows: label, percent, reset instant; whether a window is available |
+| `~/.claude/projects/**/*.jsonl` (the Guardrails tab) | per tool result a gate refused (an error result whose text starts `<Event>:<Tool> hook error:`): its time and the **gate its first words name**; the text itself is read to tell the gate and never kept |
+| `recur --memory <dir> --json` (the Guardrails tab) | per lesson: name, recurrence sentences (truncated), the ledger's decision, text (truncated) and time |
 
 **Privacy.** Only that metadata is extracted. A transcript line is decoded into a
 struct that has no field for message content, so a prompt or a response is never
@@ -237,6 +239,42 @@ current week is marked in progress. In the aggregated view the accounts have dif
 reset anchors, so it is aligned on **calendar days** (28 days of tokens per day) and each
 account's resets, one week apart, are its own marker series on the weekly-percentage chart.
 
+### Guardrails
+
+The third tab, **Guardrails**, answers one question: do the fleet's gates work?
+
+- **Chips.** Untriaged lessons; **leaking gates** (a landed gate with a recurrence dated
+  *after the day it landed*; a recurrence on the day itself may be the one that prompted
+  the gate, so it is not counted); **silent gates**; refusals this week against last.
+- **Recurrences per week** (12 weeks, Monday to Sunday, local time): the dated
+  recurrences `recur` found, with those whose year `recur` had to *infer* drawn as their
+  own line, so a viewer can tell stated from inferred. Dashed vertical lines mark every
+  moment a gate was written into the ledger. Undated recurrences cannot be placed: they are
+  counted in the lessons table and named in the notes line.
+- **Gate refusals per week, stacked by gate**, from the transcripts, sub-agents included.
+  A refusal is attributed to its gate by what its text says (guard-bash, replystamp,
+  agentsync gate, recur, mutsweep, modtidy, modelgate, ctxgate, ghbyhand, prbody,
+  paritycheck, quotaclaim); the table was built from a week of real refusals, and one no
+  rule recognises is counted as **other gate**, never dropped. Only an error result whose
+  text *starts* like a refusal counts: a file or a test log that quotes one does not.
+- **Lessons table**, one row per lesson, sortable by any column (click a header) and
+  filtered by decision: name, recurrences, last recurrence, decision, the gate's text
+  (truncated), and **recurrences after the gate** counted from the ledger's `writtenAt`,
+  red when above 0: *a gate that leaks is the headline*. Selecting a row lists its
+  recurrence sentences, year-inferred ones marked.
+- **Silent gate** (amber flag): a landed gate at least 4 weeks old, **whose ledger text
+  names a hook the transcripts show** (`replystamp`, `mutsweep -hook`, ...), with no
+  refusal from any of them in the last 4 weeks and no recurrence since it landed: either
+  obsolete or no longer running. A gate that is a test or a CI step has no refusals to
+  count and is never flagged.
+
+Nothing is ever shown as 0 for what could not be read: if `recur` is missing, fails or
+prints something that is not its JSON, the chips and the notes say **not measured** and
+give the reason; the transcripts' half is measured on its own. `recur` is run at most
+every 10 minutes with a 30 second timeout, and its answer is kept between runs.
+`--memory-dir DIR` names the memory directory it reads; by default it is the one under
+`<claude dir>/projects/*/memory` whose `.recur-ledger.md` was written last.
+
 ### Look
 
 The look is the toolkit's **Slate** theme (`toolkit.Slate(brand, dark)`), modelled on
@@ -345,8 +383,8 @@ are unix; elsewhere the path is trusted.)
 `--active` (a session is **active** when its transcript was written within this;
 default 10m), `--horizon` (default 12h), `--tell-window` (24h) and `--max-agents`.
 `serve` takes `--addr` (default `127.0.0.1:8765`), `--interval` (2s), `--web DIR`
-(serve a directory instead of building the UI), `--cache-dir` (where builds go) and
-`--show-org` (see Accounts; off by default).
+(serve a directory instead of building the UI), `--cache-dir` (where builds go),
+`--memory-dir` (see Guardrails) and `--show-org` (see Accounts; off by default).
 `snapshot --stats --warm N` prints the time and allocation counts of one cold and
 N incremental collections.
 

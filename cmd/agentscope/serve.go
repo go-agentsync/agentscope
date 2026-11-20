@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-agentsync/agentscope/collect"
+	"github.com/go-agentsync/agentscope/guard"
 	"github.com/go-agentsync/agentscope/quota"
 	"github.com/go-agentsync/agentscope/serve"
 	"github.com/go-agentsync/agentscope/usage"
@@ -17,8 +18,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// quotaRunner reads the official usage; tests replace it.
-var quotaRunner quota.Runner = quota.Exec
+// quotaRunner reads the official usage and recurRunner the lessons' recurrences;
+// tests replace them.
+var (
+	quotaRunner quota.Runner = quota.Exec
+	recurRunner guard.Runner = guard.Exec
+)
 
 func serveCmd() *cobra.Command {
 	var (
@@ -29,6 +34,7 @@ func serveCmd() *cobra.Command {
 		history  string
 		interval time.Duration
 		showOrg  bool
+		memDir   string
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -76,6 +82,7 @@ no Go toolchain.`,
 			if showOrg {
 				eng.ShowOrg(o.ClaudeDir)
 			}
+			eng.SetRecur(&guard.Source{Dir: guard.MemoryDir(memDir, o.ClaudeDir), Run: recurRunner})
 			hub := wire.NewHub(usage.Source{Inner: collect.New(o), Eng: eng}, interval, 10*time.Second)
 			hub.SetRenamer(eng)
 			srv, err := serve.New(serve.Config{Addr: addr, Web: ui, Scope: hub})
@@ -94,6 +101,7 @@ no Go toolchain.`,
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "where the built UI is kept (default <user cache dir>/agentscope)")
 	cmd.Flags().StringVar(&history, "history-dir", "", "where the official usage readings are recorded (default <user config dir>/agentscope)")
 	cmd.Flags().BoolVar(&showOrg, "show-org", false, "offer the organisation's name (from ~/.claude.json) as the suggested value of the Rename dialog; off, no organisation name is read or sent")
+	cmd.Flags().StringVar(&memDir, "memory-dir", "", "the memory directory `recur --json` reads for the Guardrails tab (default: the one under the Claude directory whose recur ledger was written last)")
 	cmd.Flags().DurationVar(&interval, "interval", 2*time.Second, "how often the network is collected")
 	return cmd
 }

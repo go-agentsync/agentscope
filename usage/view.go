@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-agentsync/agentscope/accounts"
+	"github.com/go-agentsync/agentscope/guard"
 	"github.com/go-agentsync/agentscope/model"
 	"github.com/go-agentsync/agentscope/quota"
 )
@@ -347,8 +348,12 @@ type Engine struct {
 	// org reads the organisation's name; nil unless --show-org.
 	org func() string
 
+	// recur is where the Guardrails tab reads `recur --json` (nil: not configured).
+	recur *guard.Source
+
 	mu       sync.Mutex
 	view     *model.Usage
+	gview    *model.Guardrails
 	live     []quota.Reading
 	quotaErr string
 	lastRead time.Time
@@ -473,11 +478,36 @@ func (e *Engine) Step(ctx context.Context, now time.Time) {
 	e.aliases.Reload() // the owner may have edited the file by hand
 	e.scan.SetStamps(e.stamps.Load())
 	e.scan.Refresh(now)
+	g := guard.Build(e.guardInput(ctx, now))
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	in := e.input(now)
 	in.Hist = hist
 	e.view = Build(in, e.scan)
+	e.gview = g
+}
+
+// guardInput is what the Guardrails view is built from at now: the transcripts'
+// refusals, and what recur says (or why it says nothing).
+func (e *Engine) guardInput(ctx context.Context, now time.Time) guard.Input {
+	in := guard.Input{Now: now, Refusals: e.scan.Refusals(), Scanned: e.scan.Scanned()}
+	if e.recur == nil {
+		in.RecErr = "recur is not configured"
+		return in
+	}
+	in.Rec, in.RecErr = e.recur.Get(ctx, now)
+	return in
+}
+
+// SetRecur gives the engine the source of `recur --json` that the Guardrails tab
+// reads (at most every guard.MinInterval).
+func (e *Engine) SetRecur(s *guard.Source) { e.recur = s }
+
+// Guardrails is the Guardrails tab's latest data, nil before the first pass ended.
+func (e *Engine) Guardrails() *model.Guardrails {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.gview
 }
 
 // Run steps now and then every ScanEvery until ctx ends.
@@ -512,5 +542,6 @@ type Source struct {
 func (s Source) Snapshot() model.Snapshot {
 	snap := s.Inner.Snapshot()
 	snap.Usage = s.Eng.View()
+	snap.Guardrails = s.Eng.Guardrails()
 	return snap
 }

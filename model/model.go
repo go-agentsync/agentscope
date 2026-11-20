@@ -28,6 +28,8 @@ type Snapshot struct {
 	Stats     Stats     `json:"stats"`
 	// Usage is the Quota tab's data; nil until the first scan finished.
 	Usage *Usage `json:"usage,omitempty"`
+	// Guardrails is the Guardrails tab's data; nil until the first pass ended.
+	Guardrails *Guardrails `json:"guardrails,omitempty"`
 	// ContextWindow is the size, in tokens, at which Claude Code compacts a
 	// context: what a session's Context is measured against.
 	ContextWindow int64 `json:"contextWindow,omitempty"`

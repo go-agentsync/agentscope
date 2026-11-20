@@ -102,6 +102,16 @@ type Scene struct {
 	host                 *toolkit.PopoverHost
 	notes                *toolkit.Label
 
+	// The Guardrails tab: the recurrence and refusal charts, the lessons table with
+	// its decision filter, the detail of the selected lesson, and the chips.
+	gRec      *toolkit.TimeSeriesChart
+	gBars     *toolkit.StackedBarChart
+	gTable    *toolkit.Table
+	gDetail   *toolkit.ListBox
+	gDecision *toolkit.DropDown
+	gChips    [GuardChipSlots]*toolkit.Chip
+	gNotes    *toolkit.Label
+
 	// Rebuilt by layout.
 	overlay *toolkit.Overlay
 	root    *toolkit.VBox
@@ -135,6 +145,7 @@ func NewScene(w, h int) *Scene {
 	s.tabs = toolkit.NewNotebook()
 	s.tabs.AddTab("Graph", nil)
 	s.tabs.AddTab("Quota", nil)
+	s.tabs.AddTab("Guardrails", nil)
 	s.title = toolkit.NewLabel("agentscope")
 	s.logo = toolkit.NewStatusIcon(iconoir.Drawer("network-right"))
 	s.conn = toolkit.NewChip("")
@@ -159,6 +170,7 @@ func NewScene(w, h int) *Scene {
 	s.buildPanelWidgets()
 
 	s.buildQuotaWidgets()
+	s.buildGuardWidgets()
 	s.bind()
 	s.applyTheme()
 	s.layout()
@@ -257,13 +269,14 @@ func (s *Scene) bind() {
 		vm.Graph.Edges.SubscribeChanged(invalidate),
 		vm.Graph.Nodes.SubscribeChanged(invalidate),
 		vm.Graph.Clusters.SubscribeChanged(invalidate),
-		vm.Dark.SubscribeChanged(func() { s.applyTheme(); s.refreshQuota(); invalidate() }),
+		vm.Dark.SubscribeChanged(func() { s.applyTheme(); s.refreshQuota(); s.refreshGuard(); invalidate() }),
 		vm.PanelOpen.SubscribeChanged(func() { s.syncPanel(); invalidate() }),
 		vm.Tab.SubscribeChanged(func() { s.syncPages(); s.syncPanel(); invalidate() }),
 		vm.Span.SubscribeChanged(func() { s.syncPages(); s.refreshQuota(); invalidate() }),
 		vm.Kind.SubscribeChanged(func() { s.refreshQuota(); invalidate() }),
 		vm.Usage.SubscribeChanged(func() { s.refreshQuota(); invalidate() }),
 	)
+	s.bindGuard(invalidate)
 	f := vm.Filters
 	s.unbind = append(s.unbind,
 		mvvmtk.BindSelectedIndex(s.stateDD, f.State, invalidate),
@@ -395,6 +408,7 @@ func (s *Scene) layout() {
 	s.pages = toolkit.NewStack()
 	s.pages.AddPage("graph", s.split)
 	s.pages.AddPage("quota", s.quotaPage())
+	s.pages.AddPage("guardrails", s.guardPage())
 
 	s.root = toolkit.NewVBox()
 	s.root.Spacing = px(gap)
@@ -413,6 +427,7 @@ func (s *Scene) layout() {
 	s.syncPages()
 	s.syncPanel()
 	s.refreshQuota()
+	s.refreshGuard()
 }
 
 // wideHeaderW is the logical width from which the header has room for the model
@@ -649,7 +664,8 @@ func (s *Scene) quotaPage() toolkit.Widget {
 
 // syncPages shows the page of the tab, and the layout of the span.
 func (s *Scene) syncPages() {
-	s.pages.SetVisible([]string{"graph", "quota"}[min(max(s.vm.Tab.Get(), 0), 1)])
+	pages := []string{"graph", "quota", "guardrails"}
+	s.pages.SetVisible(pages[min(max(s.vm.Tab.Get(), 0), len(pages)-1)])
 	page := "range"
 	if s.vm.Span.Get() == SpanWeeks {
 		page = "weeks"
@@ -764,8 +780,11 @@ func (s *Scene) targets() []toolkit.Widget {
 		t = append(t, s.table, s.ctxTable, s.detail)
 	}
 	t = append(t, s.search, s.expired, s.toggle, s.tabs)
-	if s.vm.Tab.Get() == TabGraph {
+	switch s.vm.Tab.Get() {
+	case TabGraph:
 		return append(t, s.graph)
+	case TabGuardrails:
+		return append(t, s.gDecision, s.gTable, s.gDetail)
 	}
 	t = append(t, s.accountDD, s.capTable, s.renameBtn)
 	for _, r := range s.spanRadios {
@@ -820,7 +839,7 @@ func (s *Scene) HandleClick(x, y int) bool {
 
 // dropDowns are the drop-downs, whose open lists take the next click.
 func (s *Scene) dropDowns() []*toolkit.DropDown {
-	return []*toolkit.DropDown{s.accountDD, s.stateDD, s.lastDD, s.repoDD}
+	return []*toolkit.DropDown{s.accountDD, s.gDecision, s.stateDD, s.lastDD, s.repoDD}
 }
 
 // clickDialog gives a click to the Rename dialog; a click outside it is

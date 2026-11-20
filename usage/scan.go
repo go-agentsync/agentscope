@@ -34,6 +34,10 @@ const BucketSec = 600
 // for the alignment on the reset.
 const Keep = 35 * 24 * time.Hour
 
+// KeepRefusals is how far back gate refusals are kept: the Guardrails tab's 12
+// weeks and a week of margin for the alignment on Monday.
+const KeepRefusals = 13 * 7 * 24 * time.Hour
+
 // Bounds on what is read.
 const (
 	maxLine   = 4 << 20 // a longer line is skipped, not parsed
@@ -90,16 +94,22 @@ type Scanner struct {
 	cache string // cache file, "" for none
 	files map[string]*fileState
 	sums  map[sumKey]Counts
+	// refs are the gate refusals, per hour and gate (see refusal.go).
+	refs  map[refKey]int64
 	dirty bool
 	// stamps is the `stamp` hook's timeline: the fallback for a call whose
 	// transcript has shown no session-owner entry.
 	stamps accounts.Timeline
+	// refCut is the oldest instant a refusal is kept from, set by Refresh;
+	// scanned is whether a Refresh ended (before it, refusals are "not measured").
+	refCut  time.Time
+	scanned bool
 }
 
 // NewScanner reads transcripts under root and keeps its cache in cacheFile
 // ("" keeps none). A cache that cannot be read is ignored: it is rebuilt.
 func NewScanner(root, cacheFile string) *Scanner {
-	s := &Scanner{root: root, cache: cacheFile, files: map[string]*fileState{}, sums: map[sumKey]Counts{}}
+	s := &Scanner{root: root, cache: cacheFile, files: map[string]*fileState{}, sums: map[sumKey]Counts{}, refs: map[refKey]int64{}}
 	s.load()
 	return s
 }
@@ -163,13 +173,16 @@ func familyIndex(modelID string) int {
 func (s *Scanner) Refresh(now time.Time) Stats {
 	var st Stats
 	cutoff := now.Add(-Keep)
+	// Refusals reach further back than tokens, so a file is read from as far back
+	// as they do (its token lines older than cutoff are skipped by their dates).
+	s.refCut = now.Add(-KeepRefusals)
 	seen := map[string]bool{}
 	_ = filepath.WalkDir(s.root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(p, ".jsonl") {
 			return nil
 		}
 		info, err := d.Info()
-		if err != nil || info.ModTime().Before(cutoff) {
+		if err != nil || info.ModTime().Before(s.refCut) {
 			return nil
 		}
 		st.Files++
@@ -201,6 +214,13 @@ func (s *Scanner) Refresh(now time.Time) Stats {
 			s.dirty = true
 		}
 	}
+	for k := range s.refs {
+		if k.Hour < s.refCut.Unix()-refHour {
+			delete(s.refs, k)
+			s.dirty = true
+		}
+	}
+	s.scanned = true
 	s.save()
 	return st
 }
@@ -245,6 +265,9 @@ func (s *Scanner) fold(line []byte, fs *fileState, cutoff time.Time, st *Stats) 
 		if json.Unmarshal(line, &o) == nil && o.AccountUUID != "" {
 			fs.Owner = quota.AccountKey(o.AccountUUID)
 		}
+		return
+	}
+	if s.foldRefusals(line) {
 		return
 	}
 	if !bytes.Contains(line, assistantMark) || !bytes.Contains(line, usageMark) {
@@ -399,6 +422,7 @@ type cacheFile struct {
 	Version int                   `json:"v"`
 	Files   map[string]*fileState `json:"files"`
 	Sums    []cachedSum           `json:"sums"`
+	Refs    []cachedRef           `json:"refs,omitempty"`
 }
 
 // cachedSum is a sum as kept on disk (a JSON object cannot be keyed by a struct).
@@ -409,8 +433,8 @@ type cachedSum struct {
 	C Counts `json:"c"`
 }
 
-// The version 1 cache had no accounts; it is rebuilt.
-const cacheVersion = 2
+// The version 1 cache had no accounts, the version 2 no refusals; each is rebuilt.
+const cacheVersion = 3
 
 func (s *Scanner) load() {
 	if s.cache == "" {
@@ -434,6 +458,11 @@ func (s *Scanner) load() {
 			s.sums[sumKey{c.B, c.A, c.F}] = c.C
 		}
 	}
+	for _, r := range c.Refs {
+		if r.N > 0 && r.G != "" {
+			s.refs[refKey{r.H, r.G}] = r.N
+		}
+	}
 }
 
 func (s *Scanner) save() {
@@ -444,7 +473,7 @@ func (s *Scanner) save() {
 	for k, v := range s.sums {
 		sums = append(sums, cachedSum{k.Bucket, k.Acct, k.Fam, v})
 	}
-	b, err := json.Marshal(cacheFile{Version: cacheVersion, Files: s.files, Sums: sums})
+	b, err := json.Marshal(cacheFile{Version: cacheVersion, Files: s.files, Sums: sums, Refs: s.cachedRefs()})
 	if err != nil || os.MkdirAll(filepath.Dir(s.cache), 0o700) != nil {
 		return
 	}

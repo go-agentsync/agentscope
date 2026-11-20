@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"time"
+
 	"github.com/go-widgets/mvvm"
 	"github.com/go-widgets/mvvmtk"
 	"github.com/go-widgets/painter"
@@ -22,7 +24,6 @@ const (
 	toggleW   = 96
 	iconW     = 30
 	titleW    = 120
-	panelW    = 420 // the side panel's width, when it fits
 	cardPad   = 12
 	nodeRound = 6
 	controlsH = 30
@@ -63,6 +64,31 @@ type Scene struct {
 	detail  *toolkit.ListBox
 	status  *toolkit.Label
 
+	// The side panel: a top bar with its title and a close button, the filter row,
+	// the sessions table, and the Details gauges and text. split holds the panel
+	// beside a spacer so its left edge can be dragged.
+	panelTitle              *toolkit.Label
+	closeBtn                *toolkit.IconButton
+	stateDD, lastDD, repoDD *toolkit.DropDown
+	modelChecks             [ModelFilterSlots]*toolkit.CheckButton
+	clearBtn                *toolkit.Button
+	ctxTable                *toolkit.Table
+	split                   *toolkit.Splitter
+	spacer                  *toolkit.Label
+	panelPane               *toolkit.SplitPane
+	hover                   int // the splitter divider under the pointer, -1 for none
+	panelFocus              []toolkit.Widget
+	dockUnsub               []func()
+	shownChecks             []*toolkit.CheckButton // the model check boxes the layout had room for
+
+	// The Rename action of the accounts table, and its dialog.
+	renameBtn   *toolkit.Button
+	renameDlg   *toolkit.Dialog
+	renameEntry *toolkit.Entry
+	renameErr   *toolkit.Label
+	renameOK    *toolkit.Button
+	renameNo    *toolkit.Button
+
 	// The Quota tab.
 	spanGroup, kindGroup *toolkit.RadioGroup
 	spanRadios           []*toolkit.RadioButton
@@ -87,6 +113,10 @@ type Scene struct {
 	dragTarget toolkit.Widget
 	dragBounds toolkit.Rect
 
+	// clock is the time the splitter's double-click detection reads (time.Now,
+	// unless a test sets another).
+	clock func() time.Time
+
 	dirty  bool
 	unbind []func()
 }
@@ -95,7 +125,7 @@ type Scene struct {
 func NewScene(w, h int) *Scene {
 	_ = toolkit.UseOpenTypeText()
 	vm := NewViewModel()
-	s := &Scene{w: w, h: h, scale: 1, theme: toolkit.Slate(Brand, false), vm: vm}
+	s := &Scene{w: w, h: h, scale: 1, theme: toolkit.Slate(Brand, false), vm: vm, clock: time.Now}
 
 	s.search = toolkit.NewSearchEntry("")
 	// Without an Icon the entry draws "?" as a stand-in for the magnifier.
@@ -119,13 +149,14 @@ func NewScene(w, h int) *Scene {
 	// Enter, or a second click on a selected node, activates it: an org node
 	// expands or collapses (the expansion is ViewModel state).
 	s.graph.OnActivate = vm.ToggleOrg
-	s.table = toolkit.NewTable(tableColumns(1), nil)
+	s.table = toolkit.NewTable(tableColumns(1, nil), nil)
 	// A click selects a row only while MultiSelect is on (table.go OnEvent
 	// returns before selecting otherwise; go-widgets/toolkit#595); a plain
 	// click still selects one row.
 	s.table.MultiSelect = true
 	s.detail = toolkit.NewListBox(nil)
 	s.status = toolkit.NewLabel("")
+	s.buildPanelWidgets()
 
 	s.buildQuotaWidgets()
 	s.bind()
@@ -156,6 +187,46 @@ func (s *Scene) buildQuotaWidgets() {
 	s.notes = toolkit.NewLabel("")
 	s.accountDD = toolkit.NewDropDown([]string{AllAccounts}, 0)
 	s.capTable = toolkit.NewTable(capColumns(1), nil)
+	// A click selects a row only while MultiSelect is on (go-widgets/toolkit#595).
+	s.capTable.MultiSelect = true
+	s.renameBtn = toolkit.NewButton("Rename...", nil)
+	s.buildRenameDialog()
+}
+
+// buildRenameDialog makes the Rename dialog: an entry for the name, a line for
+// what went wrong, and OK and Cancel. Its state is the ViewModel's (Rename).
+func (s *Scene) buildRenameDialog() {
+	s.renameEntry = toolkit.NewEntry("")
+	s.renameEntry.Placeholder = "display name, e.g. Labo (team)"
+	s.renameErr = toolkit.NewLabel("")
+	s.renameOK = toolkit.NewButton("OK", nil)
+	s.renameNo = toolkit.NewButton("Cancel", nil)
+	body := toolkit.NewVBox()
+	body.Spacing = 6
+	body.AddFixed(toolkit.NewLabel("Display name (empty removes it)"), 22)
+	body.AddFixed(s.renameErr, 22)
+	s.renameDlg = toolkit.NewDialog("Rename account", body, s.renameNo, s.renameOK)
+	s.renameDlg.Input = s.renameEntry
+	s.renameDlg.PlainTitle = true
+}
+
+// buildPanelWidgets makes the side panel's widgets: the top bar, the filter row
+// and the gauges of the Details pane.
+func (s *Scene) buildPanelWidgets() {
+	s.panelTitle = toolkit.NewLabel("Sessions and details")
+	s.closeBtn = toolkit.NewIconButton("", nil)
+	s.closeBtn.Glyph = iconoir.Drawer("xmark")
+	s.closeBtn.Flat = true
+	s.stateDD = toolkit.NewDropDown(StateNames, StateAll)
+	s.lastDD = toolkit.NewDropDown(LastNames, 0)
+	s.repoDD = toolkit.NewDropDown([]string{AllRepos}, 0)
+	for i := range s.modelChecks {
+		s.modelChecks[i] = toolkit.NewCheckButton("", false)
+	}
+	s.clearBtn = toolkit.NewButton("Clear filters", nil)
+	s.ctxTable = toolkit.NewTable([]toolkit.TableColumn{{Title: "Context of", Width: 150}, {Title: "Context"}}, nil)
+	s.spacer = toolkit.NewLabel("")
+	s.hover = -1
 }
 
 // bind connects the widgets to the ViewModel; every observable it subscribes to
@@ -193,12 +264,66 @@ func (s *Scene) bind() {
 		vm.Kind.SubscribeChanged(func() { s.refreshQuota(); invalidate() }),
 		vm.Usage.SubscribeChanged(func() { s.refreshQuota(); invalidate() }),
 	)
+	f := vm.Filters
+	s.unbind = append(s.unbind,
+		mvvmtk.BindSelectedIndex(s.stateDD, f.State, invalidate),
+		mvvmtk.BindSelectedIndex(s.lastDD, f.Last, invalidate),
+		mvvmtk.BindDropDownOptions(s.repoDD, f.RepoOptions, func(o string) string { return o }, invalidate),
+		mvvmtk.BindSelectedIndex(s.repoDD, f.Repo, invalidate),
+		mvvmtk.BindCommand(s.clearBtn, f.Clear, invalidate),
+		mvvmtk.BindTableRows(s.ctxTable, vm.Contexts, CtxRow.Cells, invalidate),
+		mvvmtk.BindTableSelection(s.capTable, vm.CapSel, invalidate),
+		mvvmtk.BindCommand(s.renameBtn, vm.Rename.Begin, invalidate),
+		mvvmtk.BindCommand(s.renameOK, vm.Rename.Confirm, invalidate),
+		mvvmtk.BindCommand(s.renameNo, vm.Rename.Cancel, invalidate),
+		mvvmtk.BindEntryText(s.renameEntry, vm.Rename.Text, invalidate),
+		mvvmtk.BindLabel(s.renameErr, vm.Rename.Err, invalidate),
+		vm.Rename.Open.SubscribeChanged(func() { s.syncDialog(); invalidate() }),
+		vm.PanelW.SubscribeChanged(func() { s.updateDetailChars(); invalidate() }), // the splitter lays itself out on its Size
+		vm.ColW.SubscribeChanged(func() { s.applyMetrics(); invalidate() }),
+		vm.DetailChars.SubscribeChanged(invalidate),
+	)
+	for i := range s.modelChecks {
+		s.unbind = append(s.unbind,
+			mvvmtk.BindChecked(s.modelChecks[i], f.ModelOn[i], invalidate),
+			f.ModelLabels[i].SubscribeChanged(func() { s.layout(); invalidate() }),
+		)
+	}
+	// The close button runs the command the t key does.
+	s.closeBtn.OnClick = vm.TogglePanel.Execute
+	// The table's column drags are the owner's: the ViewModel holds the widths.
+	s.table.OnColumnResize = func(col, w int) { vm.SetColWidth(col, int(float64(w)/s.scale+0.5)) }
+	s.table.CellBar = s.contextBar(func(row int) (CtxRow, bool) {
+		if row < 0 || row >= vm.Rows.Len() {
+			return CtxRow{}, false
+		}
+		r := vm.Rows.At(row)
+		return CtxRow{Text: r.CtxText, Ratio: r.Ratio, Band: r.Band}, r.CtxText != ""
+	}, colContext)
+	s.ctxTable.CellBar = s.contextBar(func(row int) (CtxRow, bool) {
+		if row < 0 || row >= vm.Contexts.Len() {
+			return CtxRow{}, false
+		}
+		return vm.Contexts.At(row), true
+	}, 1)
 	for i, c := range s.models {
 		s.unbind = append(s.unbind, bindChip(c, vm.ModelChips[i], invalidate))
 	}
 	// The groups start on the ViewModel's values.
 	s.spanGroup.Active().Set(vm.Span.Get())
 	s.kindGroup.Active().Set(vm.Kind.Get())
+}
+
+// contextBar is the Table.CellBar of a gauge column: the row's pressure as a
+// fraction of the cell, in the band's colour for the current theme.
+func (s *Scene) contextBar(row func(int) (CtxRow, bool), col int) func(r, c int) (float64, toolkit.RGBA, bool) {
+	return func(r, c int) (float64, toolkit.RGBA, bool) {
+		g, ok := row(r)
+		if !ok || c != col {
+			return 0, toolkit.RGBA{}, false
+		}
+		return g.Ratio, PressureColor(g.Band, s.vm.Dark.Get()), true
+	}
 }
 
 // bindChip one-way-binds a chip's text to an observable through mvvm.BindField
@@ -252,18 +377,23 @@ func (s *Scene) layout() {
 	top.AddFixed(s.logo, px(iconW))
 	top.AddFixed(s.title, px(titleW))
 	top.AddFixed(s.conn, px(connW))
-	for _, c := range s.models {
-		top.AddFixed(c, px(chipW))
+	// Under a width the chips do not fit beside the search: they leave the header
+	// (the Details and the status line still say it) so nothing runs off its edge.
+	if s.w >= px(wideHeaderW) {
+		for _, c := range s.models {
+			top.AddFixed(c, px(chipW))
+		}
 	}
-	top.AddFlex(toolkit.NewLabel(""), 1)
-	top.AddFixed(s.search, px(searchW))
+	top.AddFlex(s.search, 1) // the search takes what the fixed parts leave
 	top.AddFixed(s.expired, px(expiredW))
 	top.AddFixed(s.toggle, px(toggleW))
 	header := card("", top, cardPad)
 
 	// The two tabs share the space under the strip.
+	s.buildPanel()
+	s.dock()
 	s.pages = toolkit.NewStack()
-	s.pages.AddPage("graph", card("", s.graph, cardPad/2))
+	s.pages.AddPage("graph", s.split)
 	s.pages.AddPage("quota", s.quotaPage())
 
 	s.root = toolkit.NewVBox()
@@ -273,24 +403,160 @@ func (s *Scene) layout() {
 	s.root.AddFlex(s.pages, 1)
 	s.root.AddFixed(s.status, px(toolkit.StatusbarH))
 
-	// The side panel floats over the graph, right-aligned under the strip: the
-	// sessions table over the details, in a card of its own.
-	side := toolkit.NewVBox()
-	side.Spacing = px(gap)
-	side.AddFlex(card("Sessions", s.table, cardPad), 1)
-	side.AddFlex(card("Details", s.detail, cardPad), 1)
-	s.panel = card("", side, cardPad)
-
 	s.overlay = toolkit.NewOverlay(s.root)
 	s.host = toolkit.NewPopoverHost(s.overlay)
 	s.host.SetBounds(toolkit.Rect{W: s.w, H: s.h})
 	s.root.SetBounds(toolkit.Rect{X: px(margin), Y: px(margin), W: s.w - 2*px(margin), H: s.h - 2*px(margin)})
-	b := s.pages.Bounds()
-	pw := min(px(panelW), b.W*2/3)
-	s.panel.SetBounds(toolkit.Rect{X: b.X + b.W - pw, Y: b.Y, W: pw, H: b.H})
+	s.vm.ViewW.Set(int(float64(s.w)/s.scale + 0.5))
+	s.hover = -1
+	s.updateDetailChars()
 	s.syncPages()
 	s.syncPanel()
 	s.refreshQuota()
+}
+
+// wideHeaderW is the logical width from which the header has room for the model
+// chips beside the search.
+const wideHeaderW = 1100
+
+// buildPanel makes the side panel's containers out of its widgets: a top bar
+// (title and close button), the filter row, the sessions table, and the Details
+// (gauges over text), all in one card.
+func (s *Scene) buildPanel() {
+	px := s.px
+	bar := toolkit.NewHBox()
+	bar.Spacing = px(gap / 2)
+	bar.AddFlex(s.panelTitle, 1)
+	bar.AddFixed(s.closeBtn, px(iconW))
+
+	row := func(ws ...toolkit.Widget) *toolkit.HBox {
+		h := toolkit.NewHBox()
+		h.Spacing = px(gap / 2)
+		for _, w := range ws {
+			h.AddFlex(w, 1)
+		}
+		return h
+	}
+	filters := toolkit.NewVBox()
+	filters.Spacing = px(gap / 3)
+	filters.AddFixed(row(s.stateDD, s.lastDD), px(controlsH))
+	rows := 2
+	clearRow := toolkit.NewHBox()
+	clearRow.Spacing = px(gap / 2)
+	clearRow.AddFlex(s.repoDD, 1)
+	clearRow.AddFixed(s.clearBtn, px(clearW))
+	filters.AddFixed(clearRow, px(controlsH))
+	var on []toolkit.Widget
+	for i, c := range s.modelChecks {
+		if l := s.vm.Filters.ModelLabels[i].Get(); l != "" {
+			c.Label = l
+			on = append(on, c)
+		}
+	}
+	// A short window has no room for every row of model check boxes: the rows that
+	// do not fit are left out (the state, activity and repository filters, and the
+	// Clear button, always stay), so the table keeps its share and nothing spills.
+	room := s.h - 2*px(margin) - px(headerH) - toolkit.TouchTarget(px(toolkit.NotebookTabStripH)) - px(toolkit.StatusbarH) - 5*px(gap) - 4*px(cardPad) - px(controlsH)
+	inner := room*3/5 - px(28) // the Sessions card's share, less its title
+	spare := inner - px(minTableH) - rows*px(controlsH)
+	maxModelRows := max(spare/(px(controlsH)+px(gap/3)), 0)
+	s.shownChecks = s.shownChecks[:0]
+	for len(on) > 0 && maxModelRows > 0 {
+		n := min(3, len(on))
+		filters.AddFixed(row(on[:n]...), px(controlsH))
+		for _, w := range on[:n] {
+			s.shownChecks = append(s.shownChecks, w.(*toolkit.CheckButton))
+		}
+		on, rows, maxModelRows = on[n:], rows+1, maxModelRows-1
+	}
+	filterH := rows*px(controlsH) + (rows-1)*px(gap/3)
+
+	sessions := toolkit.NewVBox()
+	sessions.Spacing = px(gap / 2)
+	sessions.AddFixed(filters, filterH)
+	sessions.AddFlex(s.table, 1)
+
+	details := toolkit.NewVBox()
+	details.Spacing = px(gap / 2)
+	details.AddFlex(s.ctxTable, 1)
+	details.AddFlex(s.detail, 3)
+
+	side := toolkit.NewVBox()
+	side.Spacing = px(gap)
+	side.AddFixed(bar, px(controlsH))
+	side.AddFlex(card("Sessions", sessions, cardPad), 3)
+	side.AddFlex(card("Details", details, cardPad), 2)
+	s.panel = card("", side, cardPad)
+	s.panelFocus = []toolkit.Widget{s.table, s.detail, s.ctxTable, s.closeBtn, s.stateDD, s.lastDD, s.repoDD, s.clearBtn}
+	for _, c := range s.modelChecks {
+		s.panelFocus = append(s.panelFocus, c)
+	}
+}
+
+// minTableH is the least height, in logical pixels, the sessions table keeps.
+const minTableH = 100
+
+// clearW and renameW are the widths of the "Clear filters" and "Rename" buttons.
+const (
+	clearW  = 110
+	renameW = 110
+)
+
+// mirror keeps two observables equal, whichever is set; a value already equal is
+// not written back, so the pair does not echo.
+func mirror[T comparable](a, b *mvvm.Observable[T]) []func() {
+	return []func(){
+		a.SubscribeChanged(func() {
+			if b.Get() != a.Get() {
+				b.Set(a.Get())
+			}
+		}),
+		b.SubscribeChanged(func() {
+			if a.Get() != b.Get() {
+				a.Set(b.Get())
+			}
+		}),
+	}
+}
+
+// GraphMinW is the least width, in logical pixels, the graph keeps beside the
+// open panel: the splitter squeezes the panel before it takes more.
+const GraphMinW = 320
+
+// dock puts the graph and the panel side by side in a splitter: the graph takes
+// what the panel leaves, the panel's width is the ViewModel's PanelW, and its left
+// edge is the divider the owner drags, resizing both live. The panel pane is
+// shown exactly while PanelOpen: opening it shrinks the graph (which lays itself
+// out again in the narrower rectangle), closing it gives the width back, and the
+// width is remembered in PanelW. The panel is at least PanelMinW wide and at most
+// PanelMaxPercent of the surface, the graph at least GraphMinW; the splitter
+// enforces them while dragging, and the ViewModel clamps what a store restores.
+func (s *Scene) dock() {
+	hi := max(int(float64(s.w)/s.scale)*PanelMaxPercent/100, PanelMinW)
+	// The splitter holds on to the observables it is given for as long as they
+	// live, and every layout makes a new splitter: it is given its own copies,
+	// mirrored two ways with the ViewModel's, and the mirrors of the splitter that
+	// is replaced are dropped, so it never lays out a widget that is no longer
+	// its own.
+	for _, u := range s.dockUnsub {
+		u()
+	}
+	s.dockUnsub = nil
+	size, shown := mvvm.NewObservable(s.vm.PanelW.Get()), mvvm.NewObservable(s.vm.PanelOpen.Get())
+	s.dockUnsub = append(s.dockUnsub, mirror(s.vm.PanelW, size)...)
+	s.dockUnsub = append(s.dockUnsub, mirror(s.vm.PanelOpen, shown)...)
+	s.panelPane = &toolkit.SplitPane{Widget: s.panel, Name: "side panel", Size: size, Min: PanelMinW, Max: hi, Visible: shown}
+	s.split = toolkit.NewSplitter(false,
+		&toolkit.SplitPane{Widget: card("", s.graph, cardPad/2), Name: "graph", Weight: mvvm.NewObservable(1), Min: GraphMinW}, s.panelPane)
+	s.split.Now = func() time.Time { return s.clock() } // its double-click detection reads the scene's clock
+}
+
+// updateDetailChars tells the ViewModel how many characters fit across the
+// Details pane at the panel's width, so its lines wrap instead of running off.
+func (s *Scene) updateDetailChars() {
+	avg := max(toolkit.TextWidth("abcdefghijklmnopqrstuvwxyz0123456789 ")/38, 1)
+	room := s.px(s.vm.EffectivePanelW()) - 4*s.px(cardPad) - s.px(28) // two card pads a side, the scrollbar
+	s.vm.DetailChars.Set(max(room/avg, minDetailChars))
 }
 
 // tokens2 is the row of the output and cache-read token charts.
@@ -307,21 +573,30 @@ func tokens2(s *Scene, px func(int) int) toolkit.Widget {
 // "weeks" layout the 4 x 7 days one.
 func (s *Scene) quotaPage() toolkit.Widget {
 	px := s.px
-	controls := toolkit.NewHBox()
-	controls.Spacing = px(gap / 2)
-	controls.AddFixed(toolkit.NewLabel("account"), px(64))
-	controls.AddFixed(s.accountDD, px(330))
-	controls.AddFixed(toolkit.NewLabel(""), px(gap))
-	controls.AddFixed(toolkit.NewLabel("span"), px(48))
+	// Two rows, so the selectors fit a narrow window: the account and the span,
+	// then the token kind of the 4 x 7 days span.
+	first := toolkit.NewHBox()
+	first.Spacing = px(gap / 2)
+	first.AddFixed(toolkit.NewLabel("account"), px(64))
+	first.AddFlex(s.accountDD, 1)
+	first.AddFixed(toolkit.NewLabel(""), px(gap))
+	first.AddFixed(toolkit.NewLabel("span"), px(48))
 	for _, r := range s.spanRadios {
-		controls.AddFixed(r, px(radioW))
+		first.AddFixed(r, px(radioW))
 	}
-	controls.AddFixed(toolkit.NewLabel(""), px(gap))
-	controls.AddFixed(toolkit.NewLabel("tokens (4 x 7 days)"), px(150))
+	second := toolkit.NewHBox()
+	second.Spacing = px(gap / 2)
+	second.AddFixed(toolkit.NewLabel("tokens (4 x 7 days)"), px(150))
 	for _, r := range s.kindRadios {
-		controls.AddFixed(r, px(radioW))
+		second.AddFixed(r, px(radioW))
 	}
-	controls.AddFlex(toolkit.NewLabel(""), 1)
+	second.AddFlex(toolkit.NewLabel(""), 1)
+	// Rename acts on the account selected in the table below.
+	second.AddFixed(s.renameBtn, px(renameW))
+	controls := toolkit.NewVBox()
+	controls.Spacing = px(gap / 4)
+	controls.AddFixed(first, px(controlsH))
+	controls.AddFixed(second, px(controlsH))
 
 	tokens := toolkit.NewHBox()
 	tokens.Spacing = px(gap)
@@ -366,7 +641,7 @@ func (s *Scene) quotaPage() toolkit.Widget {
 
 	page := toolkit.NewVBox()
 	page.Spacing = px(gap)
-	page.AddFixed(controls, px(controlsH))
+	page.AddFixed(controls, 2*px(controlsH)+px(gap/4))
 	page.AddFlex(s.quota, 1)
 	page.AddFixed(s.notes, px(toolkit.StatusbarH))
 	return page
@@ -392,13 +667,34 @@ func (s *Scene) PanelVisible() bool {
 	return s.vm.PanelOpen.Get() && s.vm.Tab.Get() == TabGraph
 }
 
-// syncPanel puts the panel in the overlay, or takes it out.
+// syncPanel puts the panel (in its splitter) and, above it, the Rename dialog in
+// the overlay, or takes them out.
 func (s *Scene) syncPanel() {
 	s.overlay.Clear()
-	if s.PanelVisible() {
-		s.overlay.Push(s.panel)
+	if s.vm.Rename.Open.Get() {
+		w, h := s.px(dialogW), s.px(dialogH)
+		s.renameDlg.SetBounds(toolkit.Rect{X: (s.w - w) / 2, Y: (s.h - h) / 3, W: w, H: h})
+		s.overlay.Push(s.renameDlg)
 	}
 }
+
+// syncDialog shows or hides the Rename dialog, with the entry focused.
+func (s *Scene) syncDialog() {
+	s.syncPanel()
+	open := s.vm.Rename.Open.Get()
+	s.renameEntry.SetFocused(open)
+	if open {
+		s.keyTarget = s.renameEntry
+	} else if s.keyTarget == toolkit.Widget(s.renameEntry) {
+		s.keyTarget = nil
+	}
+}
+
+// The Rename dialog's size, in logical pixels.
+const (
+	dialogW = 400
+	dialogH = 190
+)
 
 // applyTheme sets the Slate theme of the system's preference, and what depends
 // on it: the graph's category palette and the title's brand ink.
@@ -457,14 +753,21 @@ func (s *Scene) Draw(buf []byte) {
 // graph's, then the header's, then those of the shown tab.
 func (s *Scene) targets() []toolkit.Widget {
 	var t []toolkit.Widget
+	if s.vm.Rename.Open.Get() { // the dialog is modal: it takes every click
+		return []toolkit.Widget{s.renameDlg}
+	}
 	if s.PanelVisible() {
-		t = append(t, s.table, s.detail)
+		t = append(t, s.closeBtn, s.clearBtn, s.stateDD, s.lastDD, s.repoDD)
+		for _, c := range s.shownChecks {
+			t = append(t, c)
+		}
+		t = append(t, s.table, s.ctxTable, s.detail)
 	}
 	t = append(t, s.search, s.expired, s.toggle, s.tabs)
 	if s.vm.Tab.Get() == TabGraph {
 		return append(t, s.graph)
 	}
-	t = append(t, s.accountDD)
+	t = append(t, s.accountDD, s.capTable, s.renameBtn)
 	for _, r := range s.spanRadios {
 		t = append(t, r)
 	}
@@ -479,10 +782,26 @@ func (s *Scene) targets() []toolkit.Widget {
 // HandleClick dispatches a click at surface (x, y) to the widget under it. A
 // click on the open panel never reaches the graph beneath it.
 func (s *Scene) HandleClick(x, y int) bool {
-	if s.accountDD.PopoverOpen() { // the open list takes the click (a click outside closes it)
-		s.accountDD.PopoverClick(x, y)
-		s.dirty = true
-		return true
+	for _, dd := range s.dropDowns() {
+		if dd.PopoverOpen() { // the open list takes the click (a click outside closes it)
+			dd.PopoverClick(x, y)
+			s.dirty = true
+			return true
+		}
+	}
+	if s.vm.Rename.Open.Get() {
+		return s.clickDialog(x, y)
+	}
+	// The panel's left edge is the divider the owner drags: a press there grabs
+	// the splitter, whose bounds are the whole graph area under it.
+	if s.PanelVisible() {
+		if hr, ok := s.split.HandleRect(0); ok && inside(x, y, hr) {
+			sb := s.split.Bounds()
+			s.dragTarget, s.dragBounds, s.keyTarget = s.split, sb, s.split
+			s.search.SetFocused(false)
+			s.split.OnEvent(local(toolkit.Event{Kind: toolkit.EventClick, X: x, Y: y}, sb))
+			return true
+		}
 	}
 	for _, w := range s.targets() {
 		r := w.Bounds()
@@ -496,6 +815,22 @@ func (s *Scene) HandleClick(x, y int) bool {
 	}
 	s.dragTarget, s.keyTarget = nil, nil
 	s.search.SetFocused(false)
+	return true
+}
+
+// dropDowns are the drop-downs, whose open lists take the next click.
+func (s *Scene) dropDowns() []*toolkit.DropDown {
+	return []*toolkit.DropDown{s.accountDD, s.stateDD, s.lastDD, s.repoDD}
+}
+
+// clickDialog gives a click to the Rename dialog; a click outside it is
+// swallowed, the dialog being modal.
+func (s *Scene) clickDialog(x, y int) bool {
+	r := s.renameDlg.Bounds()
+	if inside(x, y, r) {
+		s.renameDlg.OnEvent(local(toolkit.Event{Kind: toolkit.EventClick, X: x, Y: y}, r))
+		s.renameEntry.SetFocused(s.vm.Rename.Open.Get())
+	}
 	return true
 }
 
@@ -515,6 +850,10 @@ func (s *Scene) HandleScroll(x, y, delta int) bool {
 // HandleChar routes a printable character to the focused widget; "t" outside the
 // search box toggles the side panel.
 func (s *Scene) HandleChar(ch string) bool {
+	if s.vm.Rename.Open.Get() { // the dialog's entry takes every character
+		s.renameDlg.OnEvent(toolkit.Event{Kind: toolkit.EventChar, Code: ch})
+		return true
+	}
 	if ch == "t" && s.keyTarget != toolkit.Widget(s.search) {
 		s.vm.TogglePanel.Execute()
 		return true
@@ -528,8 +867,26 @@ func (s *Scene) HandleChar(ch string) bool {
 
 // HandleKeyDown routes a named key to the focused widget.
 func (s *Scene) HandleKeyDown(code string) bool {
+	if s.vm.Rename.Open.Get() { // Enter confirms the dialog, Escape cancels it, the rest is typing
+		switch code {
+		case "Escape":
+			s.vm.Rename.Cancel.Execute()
+		case "Enter":
+			s.vm.Rename.Confirm.Execute()
+		default:
+			s.renameDlg.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: code})
+		}
+		return true
+	}
 	if code == "Escape" {
-		s.vm.CollapseAll() // Escape folds every open org (the graph also clears its selection)
+		// With the focus in the side panel, Escape closes it: the command the t key
+		// and the close button run. Anywhere else it folds every open org (the graph
+		// also clears its selection).
+		if s.PanelVisible() && s.inPanel(s.keyTarget) {
+			s.vm.TogglePanel.Execute()
+			return true
+		}
+		s.vm.CollapseAll()
 	}
 	if s.keyTarget == nil {
 		return code == "Escape"
@@ -538,13 +895,59 @@ func (s *Scene) HandleKeyDown(code string) bool {
 	return true
 }
 
-// HandleMove routes pointer motion to the widget grabbed on press.
+// inPanel reports whether w is one of the side panel's widgets, or its divider:
+// what "the panel has the focus" means.
+func (s *Scene) inPanel(w toolkit.Widget) bool {
+	if w == nil {
+		return false
+	}
+	if w == toolkit.Widget(s.split) {
+		return true
+	}
+	for _, p := range s.panelFocus {
+		if w == p {
+			return true
+		}
+	}
+	return false
+}
+
+// HandleMove routes pointer motion to the widget grabbed on press; with nothing
+// grabbed it tracks the pointer over the panel's divider (which lights up). It
+// reports whether the picture changed.
 func (s *Scene) HandleMove(x, y int) bool {
 	if s.dragTarget == nil {
-		return false
+		return s.hoverDivider(x, y)
 	}
 	s.dragTarget.OnEvent(toolkit.Event{Kind: toolkit.EventMouseDrag, X: x - s.dragBounds.X, Y: y - s.dragBounds.Y})
 	return true
+}
+
+// hoverDivider tells the splitter where the pointer is, and reports whether that
+// changed which divider is under it.
+func (s *Scene) hoverDivider(x, y int) bool {
+	if !s.PanelVisible() {
+		old := s.hover
+		s.hover = -1
+		return old != -1
+	}
+	sb := s.split.Bounds()
+	s.split.OnEvent(local(toolkit.Event{Kind: toolkit.EventMouseMove, X: x, Y: y}, sb))
+	h := s.split.HandleAt(x, y)
+	changed := h != s.hover
+	s.hover = h
+	return changed
+}
+
+// Cursor is the CSS cursor the pointer at surface (x, y) should show: a
+// horizontal resize over the panel's divider and while it is held, "" (the
+// host's default) elsewhere.
+func (s *Scene) Cursor(x, y int) string {
+	if !s.PanelVisible() {
+		return ""
+	}
+	sb := s.split.Bounds()
+	return s.split.Cursor(x-sb.X, y-sb.Y)
 }
 
 // HandleRelease routes a button release to the grabbed widget and drops it.

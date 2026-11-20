@@ -87,8 +87,30 @@ func TestAccountOptionsNameAccountsByLabelPlanAndShortHashOnly(t *testing.T) {
 	if o := AccountOptions(nil); len(o) != 1 || o[0] != AllAccounts {
 		t.Fatal(o)
 	}
-	if accountTag("ab", "", "") != "account #ab" {
-		t.Fatal(accountTag("ab", "", ""))
+	if accountTag("ab", "", "", "") != "account #ab" {
+		t.Fatal(accountTag("ab", "", "", ""))
+	}
+	// An alias replaces the label everywhere an account is named; the unknown
+	// account has none.
+	if accountTag("ab", "Claude Code", "team", "Labo (team)") != "Labo (team)" || accountTag("", "x", "", "alias") != "unknown account" {
+		t.Fatal("alias")
+	}
+	u.Accounts[0].Alias = "Perso"
+	if AccountOptions(u)[1] != "Perso" || accountName(u.Accounts[0]) != "Perso" || markerLabel(u.Accounts[0], " reset") != "Perso reset" {
+		t.Fatalf("%q", AccountOptions(u))
+	}
+}
+
+func TestCapacityRowsCarryTheAliasAndThePlan(t *testing.T) {
+	rows := capacityRows(model.Capacity{Items: []model.CapacityItem{
+		{Key: "abcd1234", Label: "Claude Code", Alias: "Labo (team)", Plan: "team"},
+		{Key: "beef0000", Label: "Claude Code"},
+	}})
+	if rows[0].Account != "Labo (team)" || rows[0].Plan != "team" || rows[1].Account != "Claude Code #beef" || rows[1].Plan != "-" {
+		t.Fatalf("%+v", rows)
+	}
+	if c := rows[0].Cells(); len(c) != 7 || c[1] != "team" {
+		t.Fatalf("%v", c)
 	}
 }
 
@@ -101,7 +123,7 @@ func TestCapacityRowsSideBySideAndStaleNotCounted(t *testing.T) {
 	if a.Session != "2 %" || a.Weekly != "54 %" || a.Left != "0.46" || a.Active != "" || a.Resets == "" || a.Resets == "-" {
 		t.Fatalf("%+v", a)
 	}
-	if b.Left != "0.99" || b.Active != "active" || len(b.Cells()) != 6 {
+	if b.Left != "0.99" || b.Active != "active" || len(b.Cells()) != 7 {
 		t.Fatalf("%+v", b)
 	}
 	if unk.Account != "unknown account" || unk.Left != "not counted" || unk.Resets != "-" || unk.Session != "n/a" {

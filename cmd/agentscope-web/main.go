@@ -11,7 +11,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sync"
+	"sync/atomic"
 	"syscall/js"
 	"time"
 
@@ -108,7 +110,18 @@ func main() {
 		}
 		return nil
 	}))
-	on("mousemove", scene.HandleMove)
+	// The pointer over the panel's divider shows the toolkit's resize cursor.
+	canvas.Call("addEventListener", "mousemove", js.FuncOf(func(_ js.Value, a []js.Value) any {
+		if len(a) > 0 {
+			x, y := coords(a[0])
+			do(func() bool {
+				changed := scene.HandleMove(x, y)
+				canvas.Get("style").Set("cursor", scene.Cursor(x, y))
+				return changed
+			})
+		}
+		return nil
+	}))
 	on("mouseup", scene.HandleRelease)
 	canvas.Call("addEventListener", "wheel", js.FuncOf(func(_ js.Value, a []js.Value) any {
 		if len(a) == 0 {
@@ -151,8 +164,51 @@ func main() {
 	follow := func() { do(func() bool { scene.VM().Dark.Set(dark.Get("matches").Bool()); return true }) }
 	dark.Call("addEventListener", "change", js.FuncOf(func(js.Value, []js.Value) any { follow(); return nil }))
 	follow()
+	// The Rename dialog asks the server over the same connection as the stream. The
+	// request goes out from its own goroutine: the browser's event loop has to
+	// keep running for it to be sent, so the click handler must not wait for it.
+	scene.VM().Rename.Send = func(key, name string) {
+		go func() {
+			var err error
+			if c := conn.Load(); c == nil {
+				err = errors.New("not connected to the server")
+			} else {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				err = c.Rename(ctx, key, name)
+			}
+			do(func() bool { scene.VM().Rename.Done(err); return true })
+		}()
+	}
+	scene.SetStore(localStore{})
 	go watch(scene, do)
 	select {} // park forever so the callbacks live
+}
+
+// conn is the live connection to the server, nil while there is none.
+var conn atomic.Pointer[wire.Client]
+
+// localStore keeps the viewer's layout in the page's localStorage. Every access
+// is guarded: a private window, blocked site data or a full quota make the
+// browser throw, and the layout is then simply not kept.
+type localStore struct{}
+
+func (localStore) Get(key string) (v string, ok bool) {
+	defer func() {
+		if recover() != nil {
+			v, ok = "", false
+		}
+	}()
+	r := js.Global().Get("localStorage").Call("getItem", key)
+	if r.IsNull() || r.IsUndefined() {
+		return "", false
+	}
+	return r.String(), true
+}
+
+func (localStore) Set(key, value string) {
+	defer func() { _ = recover() }()
+	js.Global().Get("localStorage").Call("setItem", key, value)
 }
 
 // watch keeps a gRPC Watch stream open to the page's own origin, and shows
@@ -173,9 +229,11 @@ func watch(scene *ui.Scene, do func(func() bool)) {
 			continue
 		}
 		status("connected")
+		conn.Store(c)
 		err = c.Watch(context.Background(), func(s model.Snapshot) {
 			do(func() bool { scene.VM().Apply(s); return false })
 		})
+		conn.Store(nil)
 		_ = c.Close()
 		if err != nil {
 			status("lost: " + err.Error())

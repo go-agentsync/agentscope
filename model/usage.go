@@ -36,6 +36,13 @@ type AccountUsage struct {
 	Label  string `json:"label"`
 	Plan   string `json:"plan,omitempty"`
 	Active bool   `json:"active,omitempty"`
+	// Alias is the display name the owner gave the account (accounts.toml); it
+	// replaces the label wherever the account is named. "" when it has none.
+	Alias string `json:"alias,omitempty"`
+	// Suggest is the organisation's name, offered as a first value of the rename
+	// dialog. It is sent ONLY when the server runs with --show-org, and only for
+	// the account Claude Code is signed in to.
+	Suggest string `json:"suggest,omitempty"`
 
 	// SessionEnd and WeekEnd are the reset instants (Unix seconds) closing the
 	// current 5 hour and 7 day windows; 0 when unknown. ResetSource says where
@@ -78,6 +85,8 @@ type Capacity struct {
 type CapacityItem struct {
 	Key         string  `json:"key"`
 	Label       string  `json:"label"`
+	Alias       string  `json:"alias,omitempty"`
+	Plan        string  `json:"plan,omitempty"`
 	Active      bool    `json:"active,omitempty"`
 	SessionOK   bool    `json:"sessionOk,omitempty"`
 	Session     float64 `json:"session,omitempty"`

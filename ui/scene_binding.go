@@ -9,37 +9,38 @@ import (
 // observable for. Everything the user changes or the collector feeds goes
 // through the ViewModel instead.
 
-// tableColumns are the sessions table's columns at a scale. They are device
-// pixels (the Table does not scale a column's width), and sized for the side
-// panel's width; the task column takes what is left.
-func tableColumns(scale float64) []toolkit.TableColumn {
-	w := func(v int) int { return int(float64(v)*scale + 0.5) }
-	return []toolkit.TableColumn{
-		{Title: "State", Width: w(48)},
-		{Title: "Session", Width: w(62)},
-		{Title: "Model", Width: w(62)},
-		{Title: "Repository", Width: w(96)},
-		{Title: "Task"},
-		{Title: "Last", Width: w(34)},
-		{Title: "Ag", Width: w(24)},
+// tableColumns are the sessions table's columns at a scale, with the widths the
+// owner has dragged them to (logical pixels, one per column; the defaults when
+// there are none). They are device pixels (the Table does not scale a column's
+// width). The table scrolls sideways when they add up to more than the panel.
+func tableColumns(scale float64, widths []int) []toolkit.TableColumn {
+	cols := make([]toolkit.TableColumn, len(ColTitles))
+	for i, t := range ColTitles {
+		lw := ColDefault[i]
+		if i < len(widths) {
+			lw = widths[i]
+		}
+		cols[i] = toolkit.TableColumn{Title: t, Width: int(float64(ClampColW(i, lw))*scale + 0.5)}
 	}
+	return cols
 }
 
 // applyMetrics sets what depends on the scale.
 func (s *Scene) applyMetrics() {
 	s.graph.NodeWidth = NodeWidth // logical: the graph scales it itself
 	s.graph.CornerRadius = s.px(nodeRound)
-	s.table.Columns = tableColumns(s.scale)
+	s.table.Columns = tableColumns(s.scale, s.vm.ColW.Slice())
 	s.title.FontSize = s.px(20)
 	s.capTable.Columns = capColumns(s.scale)
+	s.ctxTable.Columns = []toolkit.TableColumn{{Title: "Context of", Width: s.px(170)}, {Title: "Context"}}
 }
 
 // capColumns are the capacity table's columns, in device pixels.
 func capColumns(scale float64) []toolkit.TableColumn {
 	w := func(v int) int { return int(float64(v)*scale + 0.5) }
 	return []toolkit.TableColumn{
-		{Title: "Account"}, {Title: "5 h", Width: w(80)}, {Title: "Weekly", Width: w(80)},
-		{Title: "Weeks left", Width: w(100)}, {Title: "Weekly reset", Width: w(180)}, {Title: "Active", Width: w(80)},
+		{Title: "Account"}, {Title: "Plan", Width: w(70)}, {Title: "5 h", Width: w(70)}, {Title: "Weekly", Width: w(70)},
+		{Title: "Weeks left", Width: w(90)}, {Title: "Weekly reset", Width: w(170)}, {Title: "Active", Width: w(70)},
 	}
 }
 

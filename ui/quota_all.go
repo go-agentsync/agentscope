@@ -20,12 +20,17 @@ func accountName(a model.AccountUsage) string {
 	if a.Key == "" {
 		return "unknown account (recorded before accounts were told apart)"
 	}
-	return accountTag(a.Key, a.Label, a.Plan)
+	return accountTag(a.Key, a.Label, a.Plan, a.Alias)
 }
 
-func accountTag(key, label, plan string) string {
+// accountTag names an account: the display name its owner gave it (an alias
+// replaces the label everywhere), else "label (plan) #hash".
+func accountTag(key, label, plan, alias string) string {
 	if key == "" {
 		return "unknown account"
+	}
+	if alias != "" {
+		return alias
 	}
 	if label == "" {
 		label = "account"
@@ -55,12 +60,12 @@ func AccountOptions(u *model.Usage) []string {
 
 // CapRow is one line of the capacity table.
 type CapRow struct {
-	Account, Session, Weekly, Left, Resets, Active string
+	Account, Plan, Session, Weekly, Left, Resets, Active string
 }
 
 // Cells are the row's cells.
 func (r CapRow) Cells() []string {
-	return []string{r.Account, r.Session, r.Weekly, r.Left, r.Resets, r.Active}
+	return []string{r.Account, r.Plan, r.Session, r.Weekly, r.Left, r.Resets, r.Active}
 }
 
 func pct(ok bool, v float64) string {
@@ -76,7 +81,11 @@ func pct(ok bool, v float64) string {
 func capacityRows(c model.Capacity) []CapRow {
 	var rows []CapRow
 	for _, it := range c.Items {
-		r := CapRow{Account: accountTag(it.Key, it.Label, ""), Session: pct(it.SessionOK, it.Session), Weekly: pct(it.WeeklyOK, it.Weekly), Left: "-", Resets: "-"}
+		plan := it.Plan
+		if plan == "" {
+			plan = "-"
+		}
+		r := CapRow{Account: accountTag(it.Key, it.Label, "", it.Alias), Plan: plan, Session: pct(it.SessionOK, it.Session), Weekly: pct(it.WeeklyOK, it.Weekly), Left: "-", Resets: "-"}
 		switch {
 		case it.Unknown:
 			r.Left = "not counted"
@@ -167,7 +176,7 @@ func buildAll(u *model.Usage, span, kind int, dark bool) quotaView {
 				notes = append(notes, accountName(a)+": "+w.Label+" not available")
 				continue
 			}
-			target.Overlays = append(target.Overlays, toolkit.TimeLine{Name: accountTag(a.Key, "", ""), Ink: ink, Points: pointsOf(w.History, start, end)})
+			target.Overlays = append(target.Overlays, toolkit.TimeLine{Name: accountTag(a.Key, "", "", a.Alias), Ink: ink, Points: pointsOf(w.History, start, end)})
 			if span != SpanWeeks {
 				if w.ResetsAt >= start && w.ResetsAt <= end {
 					target.Markers = append(target.Markers, toolkit.TimeMarker{At: w.ResetsAt, Label: markerLabel(a, " reset"), Ink: ink})
@@ -208,5 +217,5 @@ func markerLabel(a model.AccountUsage, suffix string) string {
 	if a.Key == "" {
 		return ""
 	}
-	return accountTag(a.Key, "", "") + suffix
+	return accountTag(a.Key, "", "", a.Alias) + suffix
 }

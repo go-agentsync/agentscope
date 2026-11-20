@@ -40,6 +40,12 @@ func (c *Client) Snapshot(ctx context.Context) (model.Snapshot, error) {
 	return out, err
 }
 
+// Rename asks the server to give an account a display name ("" removes it).
+func (c *Client) Rename(ctx context.Context, key, name string) error {
+	var out Empty
+	return c.cc.Invoke(ctx, methodRename, &RenameRequest{Key: key, Name: name}, &out)
+}
+
 // Watch calls fn with every snapshot the server streams, until the stream or
 // ctx ends. It returns nil when ctx was cancelled.
 func (c *Client) Watch(ctx context.Context, fn func(model.Snapshot)) error {

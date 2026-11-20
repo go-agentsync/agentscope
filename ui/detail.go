@@ -13,10 +13,13 @@ const maxDetailLines = 200
 // refreshDetail rewrites the detail pane for the current selection.
 func (vm *ViewModel) refreshDetail() {
 	var lines []string
+	var gauges []CtxRow
 	if vm.have {
 		lines = detailLines(vm.snap, vm.Graph.Selected.Get())
+		gauges = contextRows(vm.snap, vm.Graph.Selected.Get())
 	}
-	lines = wrap(lines, detailWidth)
+	setList(vm.Contexts, gauges)
+	lines = wrap(lines, max(vm.DetailChars.Get(), minDetailChars))
 	if len(lines) > maxDetailLines {
 		more := len(lines) - maxDetailLines
 		lines = append(lines[:maxDetailLines], "... "+strconv.Itoa(more)+" more line(s)")
@@ -24,8 +27,52 @@ func (vm *ViewModel) refreshDetail() {
 	setList(vm.Detail, lines)
 }
 
-// detailWidth is the width, in characters, the detail pane breaks lines at.
-const detailWidth = 84
+// detailWidth is the width, in characters, the detail pane breaks lines at until
+// the Scene has measured its panel; minDetailChars is the narrowest it is told.
+const (
+	detailWidth    = 84
+	minDetailChars = 16
+)
+
+// gaugeName is the name column of a gauge, cut to fit it.
+func gaugeName(s string) string { return model.Truncate(s, 26) }
+
+// contextRows are the gauges of a selection: a session's own and each of its
+// sub-agents', or one sub-agent's. Anything else has none.
+func contextRows(s model.Snapshot, sel string) []CtxRow {
+	w := windowOf(s)
+	switch {
+	case strings.HasPrefix(sel, "node:"+sessionPrefix):
+		short := strings.TrimPrefix(sel, "node:"+sessionPrefix)
+		se, ok := s.SessionByShort(short)
+		if !ok {
+			return nil
+		}
+		rows := []CtxRow{ctxOf("session "+short, se.Context, w)}
+		for _, a := range se.Agents {
+			rows = append(rows, ctxOf(gaugeName(agentLabel(a)), a.Context, w))
+		}
+		return rows
+	case strings.HasPrefix(sel, "node:"+agentPrefix):
+		short, id, _ := strings.Cut(strings.TrimPrefix(sel, "node:"+agentPrefix), ":")
+		se, _ := s.SessionByShort(short)
+		for _, a := range se.Agents {
+			if a.ID == id {
+				return []CtxRow{ctxOf(gaugeName(agentLabel(a)), a.Context, w)}
+			}
+		}
+	}
+	return nil
+}
+
+// agentLabel names a sub-agent in a gauge: its type, or "agent", and its id.
+func agentLabel(a model.Agent) string {
+	t := a.Type
+	if t == "" {
+		t = "agent"
+	}
+	return t + " " + a.ID
+}
 
 // wrap breaks every line longer than width runes into continuation lines
 // indented by two spaces; a ListBox clips, it does not wrap.
@@ -136,6 +183,7 @@ func sessionDetail(s model.Snapshot, short string) []string {
 		}
 	}
 	lines = append(lines, modelLines(s, se.Model, se.Models)...)
+	lines = append(lines, "context: "+contextText(se.Context, windowOf(s)))
 	add("title", se.Title)
 	add("slug", se.Slug)
 	add("cwd", se.Cwd)
@@ -188,6 +236,7 @@ func agentDetail(s model.Snapshot, rest string) []string {
 			"spawn depth: " + strconv.Itoa(a.Depth), "spawned by session " + short,
 			"description: " + a.Description, "tool use: " + a.ToolUseID,
 		}
+		lines = append(lines, "context: "+contextText(a.Context, windowOf(s)))
 		return append(lines, modelLines(s, a.Model, a.Models)...)
 	}
 	return []string{"sub-agent " + id + ": not in this snapshot"}

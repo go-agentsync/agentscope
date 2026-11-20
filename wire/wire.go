@@ -31,7 +31,16 @@ const (
 	ServiceName    = "agentscope.v1.Scope"
 	methodSnapshot = "/" + ServiceName + "/Snapshot"
 	methodWatch    = "/" + ServiceName + "/Watch"
+	methodRename   = "/" + ServiceName + "/Rename"
 )
+
+// RenameRequest asks the server to give the account with the key a display name
+// (Name "" removes it): the one write the UI makes, to accounts.toml, by the
+// serve process.
+type RenameRequest struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
+}
 
 // MaxMessage bounds one message in either direction.
 const MaxMessage = 16 << 20
@@ -72,6 +81,7 @@ func (codec) Unmarshal(data mem.BufferSlice, v any) error {
 type Scope interface {
 	Snapshot(ctx context.Context) (model.Snapshot, error)
 	Watch(ctx context.Context, send func(model.Snapshot) error) error
+	Rename(ctx context.Context, key, name string) error
 }
 
 // Register registers s on gs.
@@ -80,6 +90,22 @@ func Register(gs grpc.ServiceRegistrar, s Scope) {
 		ServiceName: ServiceName,
 		HandlerType: (*Scope)(nil),
 		Methods: []grpc.MethodDesc{{
+			MethodName: "Rename",
+			Handler: func(srv any, ctx context.Context, dec func(any) error, ic grpc.UnaryServerInterceptor) (any, error) {
+				var in RenameRequest
+				if err := dec(&in); err != nil {
+					return nil, err
+				}
+				call := func(ctx context.Context, req any) (any, error) {
+					r := req.(*RenameRequest)
+					return &Empty{}, srv.(Scope).Rename(ctx, r.Key, r.Name)
+				}
+				if ic == nil {
+					return call(ctx, &in)
+				}
+				return ic(ctx, &in, &grpc.UnaryServerInfo{Server: srv, FullMethod: methodRename}, call)
+			},
+		}, {
 			MethodName: "Snapshot",
 			Handler: func(srv any, ctx context.Context, dec func(any) error, ic grpc.UnaryServerInterceptor) (any, error) {
 				var in Empty

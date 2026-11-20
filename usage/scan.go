@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-agentsync/agentscope/accounts"
 	"github.com/go-agentsync/agentscope/model"
 	"github.com/go-agentsync/agentscope/quota"
 )
@@ -90,6 +91,9 @@ type Scanner struct {
 	files map[string]*fileState
 	sums  map[sumKey]Counts
 	dirty bool
+	// stamps is the `stamp` hook's timeline: the fallback for a call whose
+	// transcript has shown no session-owner entry.
+	stamps accounts.Timeline
 }
 
 // NewScanner reads transcripts under root and keeps its cache in cacheFile
@@ -98,6 +102,23 @@ func NewScanner(root, cacheFile string) *Scanner {
 	s := &Scanner{root: root, cache: cacheFile, files: map[string]*fileState{}, sums: map[sumKey]Counts{}}
 	s.load()
 	return s
+}
+
+// SetStamps gives the scanner the timeline of the `stamp` hook, used for the
+// calls of a transcript that has no session-owner entry.
+func (s *Scanner) SetStamps(tl accounts.Timeline) { s.stamps = tl }
+
+// Attribute is the account of a call made at `at` in a transcript whose latest
+// session-owner entry named owner: that one when there is one, else the latest
+// stamp at or before the call, else "" (unattributed).
+func (s *Scanner) Attribute(owner string, at time.Time) string {
+	if owner != "" {
+		return owner
+	}
+	if st, ok := s.stamps.At(at); ok {
+		return st.AccountHash
+	}
+	return ""
 }
 
 // usageLine is the metadata of an assistant entry that is read. There is no
@@ -248,6 +269,10 @@ func (s *Scanner) fold(line []byte, fs *fileState, cutoff time.Time, st *Stats) 
 	out := min(max(u.Message.Usage.Output, 0), maxTokens)
 	cr := min(max(u.Message.Usage.CacheRead, 0), maxTokens)
 	bucket := at.Unix() - at.Unix()%BucketSec
+	// Whose call it was: the session-owner entry of this transcript when it has
+	// shown one, else the account the stamps say was signed in at that moment,
+	// else nobody's: unattributed, never guessed.
+	acct := s.Attribute(fs.Owner, at)
 	// One API message is split over several entries carrying the same id: its
 	// counts are replaced by the larger ones, never added twice.
 	if id := u.Message.ID; id != "" {
@@ -260,12 +285,12 @@ func (s *Scanner) fold(line []byte, fs *fileState, cutoff time.Time, st *Stats) 
 			r.Out, r.Cache = max(out, r.Out), max(cr, r.Cache)
 			return
 		}
-		fs.Recent = append(fs.Recent, recent{ID: id, Acct: fs.Owner, Bucket: bucket, Family: fam, Out: out, Cache: cr})
+		fs.Recent = append(fs.Recent, recent{ID: id, Acct: acct, Bucket: bucket, Family: fam, Out: out, Cache: cr})
 		if len(fs.Recent) > recentIDs {
 			fs.Recent = fs.Recent[len(fs.Recent)-recentIDs:]
 		}
 	}
-	s.add(bucket, fs.Owner, fam, out, cr)
+	s.add(bucket, acct, fam, out, cr)
 	st.Counted++
 }
 

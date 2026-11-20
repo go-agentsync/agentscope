@@ -9,8 +9,8 @@ import (
 
 func TestPanelIsClosedByDefaultAndTheGraphTakesTheSurface(t *testing.T) {
 	s := newScene(t)
-	if s.PanelVisible() || len(s.overlay.Layers) != 0 {
-		t.Fatal("the side panel starts closed")
+	if s.PanelVisible() || s.panel.Bounds().W != 0 {
+		t.Fatal("the side panel starts closed, and takes no room")
 	}
 	g := s.graph.Bounds()
 	if g.W < testW-4*margin-40 || g.H < testH/2 {
@@ -21,15 +21,15 @@ func TestPanelIsClosedByDefaultAndTheGraphTakesTheSurface(t *testing.T) {
 	}
 }
 
-func TestPanelOpensWithTheKeyTheButtonAndASelection(t *testing.T) {
+func TestPanelOpensWithTheKeyAndTheButtonButNotWithASelection(t *testing.T) {
 	s := newScene(t)
 	vm := s.VM()
 	// The key.
-	if !s.HandleChar("t") || !vm.PanelOpen.Get() || len(s.overlay.Layers) != 1 {
+	if !s.HandleChar("t") || !vm.PanelOpen.Get() || s.panel.Bounds().W == 0 {
 		t.Fatal("t did not open the panel")
 	}
 	s.HandleChar("t")
-	if vm.PanelOpen.Get() || len(s.overlay.Layers) != 0 {
+	if vm.PanelOpen.Get() || s.panel.Bounds().W != 0 {
 		t.Fatal("t did not close it")
 	}
 	// The header button.
@@ -42,12 +42,20 @@ func TestPanelOpensWithTheKeyTheButtonAndASelection(t *testing.T) {
 	if vm.PanelOpen.Get() {
 		t.Fatal("the button did not close it")
 	}
-	// A selection opens it, and shows the details there.
+	// A selection does not open it: the panel is docked, and opening it would move
+	// the node that was just clicked. Its details are there when it is opened.
 	box, _ := s.graph.NodeBox("s:bbbbbbbb")
 	x, y := center(box)
 	s.HandleClick(x, y)
-	if !vm.PanelOpen.Get() || vm.Detail.At(0) != "session "+idB {
-		t.Fatalf("selecting a node must open the panel on its details: open=%v %q", vm.PanelOpen.Get(), vm.Detail.At(0))
+	if vm.PanelOpen.Get() {
+		t.Fatal("selecting a node opened the docked panel")
+	}
+	if after, _ := s.graph.NodeBox("s:bbbbbbbb"); after != box {
+		t.Fatalf("the clicked node moved from %v to %v", box, after)
+	}
+	s.HandleChar("t")
+	if vm.Detail.At(0) != "session "+idB {
+		t.Fatalf("%q", vm.Detail.At(0))
 	}
 	// Typing "t" into the search box is typing, not a toggle.
 	sb := s.search.Bounds()
@@ -58,30 +66,79 @@ func TestPanelOpensWithTheKeyTheButtonAndASelection(t *testing.T) {
 	}
 }
 
-func TestPanelOverlaysTheGraphAndSwallowsItsClicks(t *testing.T) {
+// The panel is DOCKED: opening it takes its width from the graph, which lays
+// itself out again in what is left; closing it gives the width back; dragging the
+// divider moves the edge between them.
+func TestPanelIsDockedBesideTheGraphAndNeverCoversIt(t *testing.T) {
 	s := newScene(t)
-	s.VM().PanelOpen.Set(true)
-	pb := s.panel.Bounds()
-	gb := s.graph.Bounds()
-	if pb.X+pb.W != gb.X+gb.W+s.px(cardPad/2)+1 && pb.X+pb.W > testW {
-		t.Fatalf("the panel is not right-aligned over the graph: %v / %v", pb, gb)
-	}
-	if want := s.px(panelW); pb.W != want {
+	vm := s.VM()
+	closed := s.graph.Bounds()
+	vm.PanelOpen.Set(true)
+	pb, gb := s.panel.Bounds(), s.graph.Bounds()
+	if want := s.px(PanelDefaultW); pb.W != want {
 		t.Fatalf("panel is %d wide, want %d", pb.W, want)
 	}
-	// A click on the panel's own chrome does not reach the node beneath.
-	s.VM().Graph.Selected.Set("")
-	before := s.VM().Graph.Selected.Get()
-	if !s.HandleClick(pb.X+2, pb.Y+2) {
-		t.Fatal("click")
+	if gb.X+gb.W > pb.X {
+		t.Fatalf("the graph %v reaches under the panel %v", gb, pb)
 	}
-	if s.VM().Graph.Selected.Get() != before {
+	if gb.W >= closed.W || closed.W-gb.W < pb.W {
+		t.Fatalf("opening the panel did not shrink the graph by its width: %v -> %v, panel %v", closed, gb, pb)
+	}
+	// The graph lays out again into the narrower rectangle: every cluster is inside.
+	for _, p := range toolkit.LayoutProblems(s.graph) {
+		t.Fatal(p)
+	}
+	vm.PanelOpen.Set(false)
+	if s.graph.Bounds() != closed || s.panel.Bounds().W != 0 {
+		t.Fatalf("closing did not give the width back: %v vs %v", s.graph.Bounds(), closed)
+	}
+	// A click on the panel's own chrome does not reach the graph.
+	vm.PanelOpen.Set(true)
+	pb = s.panel.Bounds()
+	vm.Graph.Selected.Set("")
+	s.HandleClick(pb.X+2, pb.Y+2)
+	if vm.Graph.Selected.Get() != "" {
 		t.Fatal("a click on the panel reached the graph")
 	}
 	// The wheel goes to the widget under the pointer: the table, not the graph.
 	tb := s.table.Bounds()
 	if !s.HandleScroll(tb.X+5, tb.Y+tb.H-3, 3) || !s.HandleScroll(1, testH-1, 3) {
 		t.Fatal("scroll")
+	}
+}
+
+// With the panel open as wide as it may be, on a 1024 px window, every cluster of
+// the graph lies inside the graph's rectangle, and the graph keeps a minimum width
+// beside the panel. This is the case that covering the graph made invisible.
+func TestOpenAtMaximumWidthOn1024EveryClusterIsInsideTheGraphPane(t *testing.T) {
+	defer toolkit.SetMetricScale(toolkit.MetricScale())
+	s := NewScene(1024, 768)
+	vm := s.VM()
+	vm.Apply(withUsage(crowded()))
+	vm.PanelOpen.Set(true)
+	vm.PanelW.Set(100000) // as wide as the bounds allow
+	pixels(s)
+	if vm.PanelW.Get() != 1024*PanelMaxPercent/100 {
+		t.Fatalf("maximum is %d", vm.PanelW.Get())
+	}
+	gb, pb := s.graph.Bounds(), s.panel.Bounds()
+	if gb.W < GraphMinW-2*s.px(cardPad) || gb.X+gb.W > pb.X {
+		t.Fatalf("graph %v beside panel %v: it keeps a minimum width and ends where the panel starts", gb, pb)
+	}
+	if ps := toolkit.LayoutProblems(s.graph); len(ps) != 0 {
+		t.Fatalf("a cluster or node lies outside the graph pane: %v", ps[0])
+	}
+	for _, n := range vm.Graph.Nodes.Slice() { // and every node box is inside the pane too
+		if box, ok := s.graph.NodeBox(n.ID); ok && (box.X < gb.X || box.X+box.W > gb.X+gb.W) {
+			t.Fatalf("node %s %v is outside the graph %v", n.ID, box, gb)
+		}
+	}
+	// A wider window gives the graph more columns back: the narrower rectangle is a
+	// re-layout, and closing the panel restores the first layout exactly.
+	vm.PanelOpen.Set(false)
+	pixels(s)
+	if s.graph.Bounds().W <= gb.W {
+		t.Fatal("closing the panel did not widen the graph")
 	}
 }
 
@@ -94,8 +151,8 @@ func TestPanelIsNotShownOnTheQuotaTab(t *testing.T) {
 	if s.VM().Tab.Get() != TabQuota {
 		t.Fatalf("tab %d", s.VM().Tab.Get())
 	}
-	if s.PanelVisible() || len(s.overlay.Layers) != 0 {
-		t.Fatal("the sessions panel floats over the graph, not over the charts")
+	if s.PanelVisible() {
+		t.Fatal("the sessions panel is not shown over the charts")
 	}
 	if s.pages.Visible().Get() != "quota" {
 		t.Fatal("the quota page is not shown")
@@ -144,7 +201,7 @@ func TestResizeRelaysOutAndUsesTheWholeSurface(t *testing.T) {
 		t.Fatalf("at 2x a node is %dx%d, at 1x %dx%d", two.W, two.H, one.W, one.H)
 	}
 	s.VM().PanelOpen.Set(true)
-	if pw := s.panel.Bounds().W; pw != 2*s.px(panelW)/2*1 && pw != s.px(panelW) {
+	if pw := s.panel.Bounds().W; pw != s.px(PanelDefaultW) {
 		t.Fatalf("panel %d", pw)
 	}
 
@@ -192,7 +249,7 @@ func TestQuotaTabSelectorsDriveTheViewModel(t *testing.T) {
 		t.Fatal("the kind radio did not drive the view model")
 	}
 	click(s.spanRadios[SpanShort])
-	if vm.Span.Get() != SpanShort || s.quota.Visible().Get() != "allrange" || len(s.targets()) != 4+1+3 {
+	if vm.Span.Get() != SpanShort || s.quota.Visible().Get() != "allrange" || len(s.targets()) != 4+3+3 {
 		t.Fatal("the 5 h span uses the range layout and has no kind selector")
 	}
 	buf := pixels(s)

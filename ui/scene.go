@@ -76,9 +76,12 @@ type Scene struct {
 	split                   *toolkit.Splitter
 	spacer                  *toolkit.Label
 	panelPane               *toolkit.SplitPane
-	hover                   int // the splitter divider under the pointer, -1 for none
+	hover                   int               // the splitter divider under the pointer, -1 for none
+	vsplit                  *toolkit.Splitter // Sessions over Details, inside the panel
+	vhover                  int               // the divider of vsplit under the pointer, -1 for none
+	filtersShown            bool              // the Sessions pane has room for its filter rows
 	panelFocus              []toolkit.Widget
-	dockUnsub               []func()
+	dockUnsub, splitUnsub   []func()
 	quotaStale              bool                   // the usage changed while the Quota tab was not shown
 	shownChecks             []*toolkit.CheckButton // the model check boxes the layout had room for
 
@@ -239,7 +242,7 @@ func (s *Scene) buildPanelWidgets() {
 	s.clearBtn = toolkit.NewButton("Clear filters", nil)
 	s.ctxTable = toolkit.NewTable([]toolkit.TableColumn{{Title: "Context of", Width: 150}, {Title: "Context"}}, nil)
 	s.spacer = toolkit.NewLabel("")
-	s.hover = -1
+	s.hover, s.vhover = -1, -1
 }
 
 // bind connects the widgets to the ViewModel; every observable it subscribes to
@@ -306,6 +309,8 @@ func (s *Scene) bind() {
 		mvvmtk.BindLabel(s.renameErr, vm.Rename.Err, invalidate),
 		vm.Rename.Open.SubscribeChanged(func() { s.syncDialog(); invalidate() }),
 		vm.PanelW.SubscribeChanged(func() { s.updateDetailChars(); invalidate() }), // the splitter lays itself out on its Size
+		// A new split decides which filter rows the Sessions pane has room for.
+		vm.Split.SubscribeChanged(func() { s.layout(); invalidate() }),
 		vm.ColW.SubscribeChanged(func() { s.applyMetrics(); invalidate() }),
 		vm.DetailChars.SubscribeChanged(invalidate),
 	)
@@ -435,7 +440,7 @@ func (s *Scene) layout() {
 	s.host.SetBounds(toolkit.Rect{W: s.w, H: s.h})
 	s.root.SetBounds(toolkit.Rect{X: px(margin), Y: px(margin), W: s.w - 2*px(margin), H: s.h - 2*px(margin)})
 	s.vm.ViewW.Set(int(float64(s.w)/s.scale + 0.5))
-	s.hover = -1
+	s.hover, s.vhover = -1, -1
 	s.updateDetailChars()
 	s.syncPages()
 	s.syncPanel()
@@ -485,7 +490,7 @@ func (s *Scene) buildPanel() {
 	// do not fit are left out (the state, activity and repository filters, and the
 	// Clear button, always stay), so the table keeps its share and nothing spills.
 	room := s.h - 2*px(margin) - px(headerH) - toolkit.TouchTarget(px(toolkit.NotebookTabStripH)) - px(toolkit.StatusbarH) - 5*px(gap) - 4*px(cardPad) - px(controlsH)
-	inner := room*3/5 - px(28) // the Sessions card's share, less its title
+	inner := s.sessionsShare(room) - px(28) // the Sessions card's share, less its title
 	spare := inner - px(minTableH) - rows*px(controlsH)
 	maxModelRows := max(spare/(px(controlsH)+px(gap/3)), 0)
 	s.shownChecks = s.shownChecks[:0]
@@ -499,9 +504,15 @@ func (s *Scene) buildPanel() {
 	}
 	filterH := rows*px(controlsH) + (rows-1)*px(gap/3)
 
+	// A Sessions pane dragged down to its minimum has no room for the filter rows
+	// above a table worth reading: they leave, and the table keeps the pane (the
+	// table scrolls inside it). They come back as soon as the pane has the room.
+	s.filtersShown = inner >= filterH+px(gap/2)+px(minTableFloor)
 	sessions := toolkit.NewVBox()
 	sessions.Spacing = px(gap / 2)
-	sessions.AddFixed(filters, filterH)
+	if s.filtersShown {
+		sessions.AddFixed(filters, filterH)
+	}
 	sessions.AddFlex(s.table, 1)
 
 	details := toolkit.NewVBox()
@@ -509,11 +520,12 @@ func (s *Scene) buildPanel() {
 	details.AddFlex(s.ctxTable, 1)
 	details.AddFlex(s.detail, 3)
 
+	// Sessions over Details: the divider between them is the one the owner drags.
+	// Its panes hold at least PaneMinH each, and the ratio is the ViewModel's Split.
 	side := toolkit.NewVBox()
-	side.Spacing = px(gap)
+	side.Spacing = px(gap / 2)
 	side.AddFixed(bar, px(controlsH))
-	side.AddFlex(card("Sessions", sessions, cardPad), 3)
-	side.AddFlex(card("Details", details, cardPad), 2)
+	side.AddFlex(s.stack(card("Sessions", sessions, cardPad), card("Details", details, cardPad)), 1)
 	s.panel = card("", side, cardPad)
 	s.panelFocus = []toolkit.Widget{s.table, s.detail, s.ctxTable, s.closeBtn, s.stateDD, s.lastDD, s.repoDD, s.clearBtn}
 	for _, c := range s.modelChecks {
@@ -786,9 +798,12 @@ func (s *Scene) targets() []toolkit.Widget {
 		return []toolkit.Widget{s.renameDlg}
 	}
 	if s.PanelVisible() {
-		t = append(t, s.closeBtn, s.clearBtn, s.stateDD, s.lastDD, s.repoDD)
-		for _, c := range s.shownChecks {
-			t = append(t, c)
+		t = append(t, s.closeBtn)
+		if s.filtersShown { // the rows a short Sessions pane has no room for take no click
+			t = append(t, s.clearBtn, s.stateDD, s.lastDD, s.repoDD)
+			for _, c := range s.shownChecks {
+				t = append(t, c)
+			}
 		}
 		t = append(t, s.table, s.ctxTable, s.detail)
 	}
@@ -827,11 +842,8 @@ func (s *Scene) HandleClick(x, y int) bool {
 	// The panel's left edge is the divider the owner drags: a press there grabs
 	// the splitter, whose bounds are the whole graph area under it.
 	if s.PanelVisible() {
-		if hr, ok := s.split.HandleRect(0); ok && inside(x, y, hr) {
-			sb := s.split.Bounds()
-			s.dragTarget, s.dragBounds, s.keyTarget = s.split, sb, s.split
-			s.search.SetFocused(false)
-			s.split.OnEvent(local(toolkit.Event{Kind: toolkit.EventClick, X: x, Y: y}, sb))
+		// The divider between Sessions and Details is grabbed the same way.
+		if s.grabDivider(s.vsplit, x, y) || s.grabDivider(s.split, x, y) {
 			return true
 		}
 	}
@@ -931,7 +943,7 @@ func (s *Scene) HandleKeyDown(code string) bool {
 // what "the panel has the focus" means.
 func (s *Scene) inPanel(w toolkit.Widget) bool {
 	// A nil w equals no widget below, so it needs no refusal of its own.
-	if w == toolkit.Widget(s.split) {
+	if w == toolkit.Widget(s.split) || w == toolkit.Widget(s.vsplit) {
 		return true
 	}
 	for _, p := range s.panelFocus {
@@ -957,15 +969,16 @@ func (s *Scene) HandleMove(x, y int) bool {
 // changed which divider is under it.
 func (s *Scene) hoverDivider(x, y int) bool {
 	if !s.PanelVisible() {
-		old := s.hover
-		s.hover = -1
-		return old != -1
+		old, oldV := s.hover, s.vhover
+		s.hover, s.vhover = -1, -1
+		return old != -1 || oldV != -1
 	}
-	sb := s.split.Bounds()
+	sb, vb := s.split.Bounds(), s.vsplit.Bounds()
 	s.split.OnEvent(local(toolkit.Event{Kind: toolkit.EventMouseMove, X: x, Y: y}, sb))
-	h := s.split.HandleAt(x, y)
-	changed := h != s.hover
-	s.hover = h
+	s.vsplit.OnEvent(local(toolkit.Event{Kind: toolkit.EventMouseMove, X: x, Y: y}, vb))
+	h, v := s.split.HandleAt(x, y), s.vsplit.HandleAt(x, y)
+	changed := h != s.hover || v != s.vhover
+	s.hover, s.vhover = h, v
 	return changed
 }
 
@@ -975,6 +988,9 @@ func (s *Scene) hoverDivider(x, y int) bool {
 func (s *Scene) Cursor(x, y int) string {
 	if !s.PanelVisible() {
 		return ""
+	}
+	if c := s.vsplit.Cursor(x-s.vsplit.Bounds().X, y-s.vsplit.Bounds().Y); c != "" {
+		return c // a vertical resize over the Sessions/Details divider
 	}
 	sb := s.split.Bounds()
 	return s.split.Cursor(x-sb.X, y-sb.Y)

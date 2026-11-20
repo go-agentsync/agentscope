@@ -124,6 +124,14 @@ ViewModel state, kept **per viewer in the browser's `localStorage`** (every acce
 try/catch; a store that cannot be read leaves the defaults, and what it holds is
 clamped).
 
+**Splitting.** Drag the divider between **Sessions** and **Details** (a vertical resize
+cursor; the keyboard works on it too) to give either more height. Each pane keeps at
+least **120 px** and scrolls its own content; a window resize keeps the ratio and the
+minimums. A **double-click** on the divider restores **55 % / 45 %**. The ratio is
+ViewModel state, kept per viewer in `localStorage` like the width (a missing or corrupt
+value is the default, a number is clamped to 10-90 %). When Sessions is at its minimum the
+filter rows leave it so the table keeps the room.
+
 **Filters** above the sessions table, all ViewModel state and combined with AND (and
 with the search text): **state** (All / Active / Idle), **last activity** (any, < 10
 min, < 1 h, < 6 h, < 24 h), **repository** (a session matches any repository it holds

@@ -142,6 +142,9 @@ type ViewModel struct {
 	// sessions table's column widths. All three are persisted per viewer (SetStore).
 	ViewW, PanelW *mvvm.Observable[int]
 	ColW          *mvvm.ObservableList[int]
+	// Split is the Sessions pane's share, in thousandths, of the Sessions and Details
+	// panes stacked in the side panel (see vsplit.go); persisted per viewer too.
+	Split *mvvm.Observable[int]
 
 	// The Rename action of the accounts table: CapSel is the selected row, and
 	// Rename the dialog's state (see rename.go).
@@ -188,8 +191,14 @@ func NewViewModel() *ViewModel {
 		ViewW:       mvvm.NewObservable(DefaultW),
 		PanelW:      mvvm.NewObservable(PanelDefaultW),
 		ColW:        mvvm.NewObservableList(ColDefault...),
+		Split:       mvvm.NewObservable(SplitDefault),
 		CapSel:      mvvm.NewObservable(-1),
 	}
+	vm.Split.SubscribeChanged(func() {
+		if v := ClampSplit(vm.Split.Get()); v != vm.Split.Get() {
+			vm.Split.Set(v)
+		}
+	})
 	vm.Filters = newFilters(vm.refreshRows)
 	vm.Rename = newRenameState(vm)
 	// A width the owner (or a store) sets is held to the bounds at once. A surface

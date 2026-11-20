@@ -185,7 +185,7 @@ func TestScannerKeepsTheOwnerAcrossPassesAndARestart(t *testing.T) {
 		}
 	}
 	// A sum for a family that does not exist is dropped.
-	os.WriteFile(cache, []byte(`{"v":2,"sums":[{"b":600,"f":9,"c":{"o":1}},{"b":600,"f":1,"c":{"o":1}}]}`), 0o600)
+	os.WriteFile(cache, []byte(`{"v":3,"sums":[{"b":600,"f":9,"c":{"o":1}},{"b":600,"f":1,"c":{"o":1}}]}`), 0o600)
 	if s4 := NewScanner(filepath.Join(root, "projects"), cache); len(s4.sums) != 1 {
 		t.Fatalf("%v", s4.sums)
 	}
@@ -195,12 +195,12 @@ func TestScannerRestartsAShrunkFileDropsGoneFilesAndOldSums(t *testing.T) {
 	root := t.TempDir()
 	at := now.Add(-time.Hour)
 	p := write(t, root, "p/a.jsonl", owner("uuid-a"), entry(at, "m1", "claude-opus-5-5", 10, 0), entry(at, "m2", "claude-opus-5-5", 10, 0))
-	old := write(t, root, "p/old.jsonl", entry(now.Add(-60*24*time.Hour), "m1", "claude-opus-5-5", 10, 0))
-	os.Chtimes(old, now.Add(-60*24*time.Hour), now.Add(-60*24*time.Hour))
+	old := write(t, root, "p/old.jsonl", entry(now.Add(-120*24*time.Hour), "m1", "claude-opus-5-5", 10, 0))
+	os.Chtimes(old, now.Add(-120*24*time.Hour), now.Add(-120*24*time.Hour))
 	gone := write(t, root, "p/gone.jsonl", entry(at, "m9", "claude-opus-5-5", 1, 0))
 	s := NewScanner(filepath.Join(root, "projects"), "")
 	if st := s.Refresh(now); st.Files != 2 {
-		t.Fatalf("a transcript untouched for 60 days was opened: %+v", st)
+		t.Fatalf("a transcript untouched for 120 days (past KeepRefusals) was opened: %+v", st)
 	}
 	os.Remove(gone)
 	os.WriteFile(p, []byte(entry(at, "m3", "claude-opus-5-5", 3, 0)), 0o600) // rewritten, shorter, no owner now

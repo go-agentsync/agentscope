@@ -32,6 +32,7 @@ func (s *Scene) applyMetrics() {
 	s.table.Columns = tableColumns(s.scale, s.vm.ColW.Slice())
 	s.title.FontSize = s.px(20)
 	s.capTable.Columns = capColumns(s.scale)
+	s.gTable.Columns = guardColumns(s.scale)
 	s.ctxTable.Columns = []toolkit.TableColumn{{Title: "Context of", Width: s.px(170)}, {Title: "Context"}}
 }
 

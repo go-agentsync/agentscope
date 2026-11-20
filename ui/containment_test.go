@@ -61,7 +61,7 @@ func TestNothingLeavesItsFrame(t *testing.T) {
 			s := NewScene(size.w, size.h)
 			s.Resize(int(float64(size.w)*scale), int(float64(size.h)*scale), scale)
 			vm := s.VM()
-			vm.Apply(withUsage(crowded()))
+			vm.Apply(snapWith2(withUsage(crowded()), guardFixture()))
 			vm.PanelOpen.Set(true)
 			vm.Graph.Selected.Set("node:s:" + crowded().Sessions[0].Short)
 			vm.Rename.Open.Set(true)
@@ -76,6 +76,12 @@ func TestNothingLeavesItsFrame(t *testing.T) {
 			vm.Tab.Set(TabQuota)
 			if got := outside(s); len(got) != 0 {
 				t.Fatalf("%s, quota tab: %v", name, got[0])
+			}
+			pixels(s)
+			vm.Tab.Set(TabGuardrails)
+			vm.Guard.Sel.Set(0)
+			if got := outside(s); len(got) != 0 {
+				t.Fatalf("%s, guardrails tab: %v", name, got[0])
 			}
 			pixels(s)
 			vm.Tab.Set(TabGraph)
@@ -98,4 +104,23 @@ func TestTheContainmentCheckSeesAnOverflow(t *testing.T) {
 	if got := outside(s); len(got) == 0 {
 		t.Fatal("a button placed 5000 px to the right of its bar went unreported")
 	}
+}
+
+// The same check bites on the Guardrails tab: a chart pushed out of its card is
+// reported there too.
+func TestTheContainmentCheckSeesAnOverflowOnTheGuardrailsTab(t *testing.T) {
+	s := guardScene(t)
+	if got := outside(s); len(got) != 0 {
+		t.Fatalf("a laid-out Guardrails tab reports %v", got)
+	}
+	b := s.gBars.Bounds()
+	s.gBars.SetBounds(toolkit.Rect{X: b.X + 5000, Y: b.Y, W: b.W, H: b.H})
+	if got := outside(s); len(got) == 0 {
+		t.Fatal("a chart placed 5000 px to the right of its card went unreported")
+	}
+}
+
+func snapWith2(sn model.Snapshot, g *model.Guardrails) model.Snapshot {
+	sn.Guardrails = g
+	return sn
 }

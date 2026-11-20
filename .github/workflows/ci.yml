@@ -52,7 +52,7 @@ jobs:
       # the View and the ViewModel and is held at 100%, the module at 90%. A
       # package with no statements in the profile is an error, not a pass.
       - name: coverage gate
-        run: go run ./internal/covercheck -profile coverage.out -min total=90 -min ui=100 -min model=100 -min collect=90 -min webui=85 -min cmd/agentscope=90 -min quota=95 -min usage=95
+        run: go run ./internal/covercheck -profile coverage.out -min total=90 -min ui=100 -min model=100 -min collect=90 -min webui=85 -min cmd/agentscope=90 -min quota=95 -min usage=95 -min guard=95
       # The machine this runs on is a Mac and one lane is Windows: compile them.
       - name: vet for darwin on arm64
         run: GOOS=darwin GOARCH=arm64 go vet ./...

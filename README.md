@@ -93,6 +93,19 @@ to the device pixel ratio, so a 2x screen is drawn at 2x and not stretched. The
 graph's clusters flow into as many columns as the width holds; a resize may lay the
 graph out again, an edge update never does.
 
+**Rendering is sober.** The canvas is repainted only when something it shows changed,
+the user interacted, or the size changed: a snapshot that differs from the last one
+only by its clock, its per-pass counters or the instant the usage view was built
+repaints nothing (the status line has no clock for that reason), and the Quota
+charts are not rebuilt while another tab is shown. While the tab is **hidden**
+(`visibilitychange`) nothing is applied or drawn, the newest snapshot is kept and
+shown once, in one repaint, when the tab is visible again. The backing store is capped
+at **8 million device pixels** (the device pixel ratio is lowered to fit, and
+re-fitted when the ratio changes, by a `resolution` media query), and one pixel buffer
+and one `ImageData` serve every frame (they are made again only when the size
+changes). `agentscopeStats()` in the page console returns the number of redraws and
+the wasm heap.
+
 The **sessions table and the details are a side panel docked beside the graph** (a
 toolkit `Splitter`, 420 logical pixels by default), **closed by default**. Opening it
 shrinks the graph to the width that is left (the graph lays itself out again, with

@@ -12,6 +12,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"syscall/js"
@@ -42,8 +44,20 @@ func main() {
 		imageData js.Value
 		dst       js.Value
 		scene     = ui.NewScene(ui.DefaultW, ui.DefaultH)
+		feed      = ui.NewFeed(scene)
+		lastDPR   float64
 	)
+	feed.SetHidden(doc.Get("hidden").Bool())
+	// agentscopeStats lets a measurement read how many full redraws were made and
+	// what the wasm heap holds (a Chrome DevTools Runtime.evaluate, or the console).
+	js.Global().Set("agentscopeStats", js.FuncOf(func(js.Value, []js.Value) any {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		return fmt.Sprintf(`{"renders":%d,"heapAlloc":%d,"heapSys":%d,"numGC":%d,"canvasW":%d,"canvasH":%d}`,
+			renders.Load(), m.HeapAlloc, m.HeapSys, m.NumGC, canvas.Get("width").Int(), canvas.Get("height").Int())
+	}))
 	render := func() {
+		renders.Add(1)
 		scene.Draw(local)
 		js.CopyBytesToJS(dst, local)
 		ctx2d.Call("putImageData", imageData, 0, 0)
@@ -51,23 +65,36 @@ func main() {
 	// fit makes the canvas the viewport, in device pixels, and lays the scene out
 	// again. The caller holds the lock.
 	fit := func() {
-		dpr := js.Global().Get("devicePixelRatio").Float()
-		if dpr <= 0 {
-			dpr = 1
-		}
 		root := doc.Get("documentElement")
-		w := int(float64(root.Get("clientWidth").Int())*dpr + 0.5)
-		h := int(float64(root.Get("clientHeight").Int())*dpr + 0.5)
+		cssW, cssH := root.Get("clientWidth").Int(), root.Get("clientHeight").Int()
+		// The backing store is capped (ui.MaxBackingPixels): a 5K display at 2x
+		// would otherwise be 30 M pixels, and the compositor keeps copies.
+		dpr := ui.CapDPR(cssW, cssH, js.Global().Get("devicePixelRatio").Float())
+		w := int(float64(cssW)*dpr + 0.5)
+		h := int(float64(cssH)*dpr + 0.5)
 		if w < 1 || h < 1 {
 			return
 		}
+		if cw, ch := canvas.Get("width").Int(), canvas.Get("height").Int(); cw == w && ch == h && dpr == lastDPR {
+			return // a resize event that changed nothing: no new buffers, no redraw
+		}
+		lastDPR = dpr
 		canvas.Set("width", w)
 		canvas.Set("height", h)
-		local = make([]byte, 4*w*h)
+		// One pixel buffer and one ImageData serve every frame; they are made
+		// again only when the size changes, and the Go buffer is reused when it
+		// is already large enough.
+		if n := 4 * w * h; cap(local) >= n {
+			local = local[:n]
+		} else {
+			local = make([]byte, n)
+		}
 		imageData = ctx2d.Call("createImageData", w, h)
 		dst = imageData.Get("data")
 		scene.Resize(w, h, dpr)
-		render()
+		if !feed.Hidden() {
+			render()
+		}
 	}
 	mu.Lock()
 	fit()
@@ -82,10 +109,38 @@ func main() {
 	do := func(fn func() bool) {
 		mu.Lock()
 		defer mu.Unlock()
-		if fn() || scene.Dirty() {
+		// A hidden tab draws nothing: its state still follows (the dirty flag stays
+		// set), and the one redraw happens when it is visible again.
+		if (fn() || scene.Dirty()) && !feed.Hidden() {
 			render()
 		}
 	}
+	// Visibility: hidden stops all drawing (snapshots are held, only the newest);
+	// visible applies the held one and draws once.
+	doc.Call("addEventListener", "visibilitychange", js.FuncOf(func(js.Value, []js.Value) any {
+		hidden := doc.Get("hidden").Bool()
+		do(func() bool { feed.SetHidden(hidden); return !hidden })
+		return nil
+	}))
+	// A change of devicePixelRatio (a window moved to another screen, a zoom) has
+	// no event of its own: a resolution media query does, and is armed again for
+	// the new ratio each time.
+	var watchDPR func()
+	watchDPR = func() {
+		q := js.Global().Call("matchMedia", fmt.Sprintf("(resolution: %fdppx)", js.Global().Get("devicePixelRatio").Float()))
+		var cb js.Func
+		cb = js.FuncOf(func(js.Value, []js.Value) any {
+			q.Call("removeEventListener", "change", cb)
+			cb.Release()
+			mu.Lock()
+			fit()
+			mu.Unlock()
+			watchDPR()
+			return nil
+		})
+		q.Call("addEventListener", "change", cb)
+	}
+	watchDPR()
 
 	coords := func(e js.Value) (int, int) {
 		rect := canvas.Call("getBoundingClientRect")
@@ -181,9 +236,12 @@ func main() {
 		}()
 	}
 	scene.SetStore(localStore{})
-	go watch(scene, do)
+	go watch(scene, feed, do)
 	select {} // park forever so the callbacks live
 }
+
+// renders counts the full redraws of the canvas.
+var renders atomic.Int64
 
 // conn is the live connection to the server, nil while there is none.
 var conn atomic.Pointer[wire.Client]
@@ -213,7 +271,7 @@ func (localStore) Set(key, value string) {
 
 // watch keeps a gRPC Watch stream open to the page's own origin, and shows
 // each snapshot; when the stream ends it says so and retries.
-func watch(scene *ui.Scene, do func(func() bool)) {
+func watch(scene *ui.Scene, feed *ui.Feed, do func(func() bool)) {
 	loc := js.Global().Get("location")
 	scheme := "ws://"
 	if loc.Get("protocol").String() == "https:" {
@@ -231,7 +289,7 @@ func watch(scene *ui.Scene, do func(func() bool)) {
 		status("connected")
 		conn.Store(c)
 		err = c.Watch(context.Background(), func(s model.Snapshot) {
-			do(func() bool { scene.VM().Apply(s); return false })
+			do(func() bool { feed.Offer(s); return false })
 		})
 		conn.Store(nil)
 		_ = c.Close()

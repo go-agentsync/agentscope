@@ -79,6 +79,7 @@ type Scene struct {
 	hover                   int // the splitter divider under the pointer, -1 for none
 	panelFocus              []toolkit.Widget
 	dockUnsub               []func()
+	quotaStale              bool                   // the usage changed while the Quota tab was not shown
 	shownChecks             []*toolkit.CheckButton // the model check boxes the layout had room for
 
 	// The Rename action of the accounts table, and its dialog.
@@ -271,10 +272,22 @@ func (s *Scene) bind() {
 		vm.Graph.Clusters.SubscribeChanged(invalidate),
 		vm.Dark.SubscribeChanged(func() { s.applyTheme(); s.refreshQuota(); s.refreshGuard(); invalidate() }),
 		vm.PanelOpen.SubscribeChanged(func() { s.syncPanel(); invalidate() }),
-		vm.Tab.SubscribeChanged(func() { s.syncPages(); s.syncPanel(); invalidate() }),
+		vm.Tab.SubscribeChanged(func() {
+			s.syncPages()
+			s.syncPanel()
+			if s.quotaStale {
+				s.refreshQuota()
+			}
+			invalidate()
+		}),
 		vm.Span.SubscribeChanged(func() { s.syncPages(); s.refreshQuota(); invalidate() }),
 		vm.Kind.SubscribeChanged(func() { s.refreshQuota(); invalidate() }),
-		vm.Usage.SubscribeChanged(func() { s.refreshQuota(); invalidate() }),
+		vm.Usage.SubscribeChanged(func() {
+			s.refreshQuota()
+			if vm.Tab.Get() == TabQuota { // nothing is repainted for a tab that is not shown
+				invalidate()
+			}
+		}),
 	)
 	s.bindGuard(invalidate)
 	f := vm.Filters
@@ -917,9 +930,7 @@ func (s *Scene) HandleKeyDown(code string) bool {
 // inPanel reports whether w is one of the side panel's widgets, or its divider:
 // what "the panel has the focus" means.
 func (s *Scene) inPanel(w toolkit.Widget) bool {
-	if w == nil {
-		return false
-	}
+	// A nil w equals no widget below, so it needs no refusal of its own.
 	if w == toolkit.Widget(s.split) {
 		return true
 	}

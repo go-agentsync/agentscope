@@ -6,6 +6,8 @@
 package ui
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -126,7 +128,6 @@ type ViewModel struct {
 	AccountOptions *mvvm.ObservableList[string]
 	Capacity       *mvvm.ObservableList[CapRow]
 	selKey         string // the selected account's key, or allKey
-	syncing        bool
 
 	// Filters narrow the sessions table (AND, with the query).
 	Filters *Filters
@@ -147,6 +148,7 @@ type ViewModel struct {
 	CapSel *mvvm.Observable[int]
 	Rename *RenameState
 
+	usageSig string // a hash of the Usage last set, "" for none
 	snap     model.Snapshot
 	have     bool
 	allRows  []Row
@@ -248,16 +250,14 @@ func (vm *ViewModel) onUsage() {
 	if vm.CapSel.Get() >= len(rows) {
 		vm.CapSel.Set(-1)
 	}
-	vm.syncing = true
+	// Setting the selector runs onAccount, which derives selKey again from the
+	// same usage and index: the key just chosen, so it is a no-op and needs no
+	// guard against being re-entered.
 	vm.Account.Set(idx)
-	vm.syncing = false
 }
 
 // onAccount follows the selector.
 func (vm *ViewModel) onAccount() {
-	if vm.syncing {
-		return
-	}
 	u, i := vm.Usage.Get(), vm.Account.Get()
 	if u == nil || i <= 0 || i > len(u.Accounts) {
 		vm.selKey = allKey
@@ -273,8 +273,13 @@ func (vm *ViewModel) Snapshot() (model.Snapshot, bool) { return vm.snap, vm.have
 // whose members did not change does not lay itself out again.
 func (vm *ViewModel) Apply(s model.Snapshot) {
 	vm.snap, vm.have = s, true
-	vm.Usage.Set(s.Usage)
 	vm.Guard.Data.Set(s.Guardrails)
+	// A new Usage value with the same content is not a change: setting it would
+	// rebuild every chart and repaint the Quota tab for nothing.
+	if sig := usageSig(s.Usage); sig != vm.usageSig {
+		vm.usageSig = sig
+		vm.Usage.Set(s.Usage)
+	}
 	vm.rebuildGraph()
 
 	vm.allRows = vm.allRows[:0]
@@ -362,7 +367,9 @@ func (vm *ViewModel) row(s model.Snapshot, se model.Session) Row {
 	}
 	age := neverActive
 	if !se.LastActivity.IsZero() {
-		age = s.At.Sub(se.LastActivity)
+		// To the minute, like the "Last" column: a row that differs in seconds only
+		// is not a change, and would repaint the table on every snapshot.
+		age = s.At.Sub(se.LastActivity).Truncate(time.Minute)
 	}
 	c := ctxOf("", se.Context, windowOf(s))
 	return Row{ID: se.Short, State: state, Repo: repo, Task: s.Task(se), Last: ago(s.At, se.LastActivity), Agent: strconv.Itoa(len(se.Agents)), Model: modelShort(se.Model),
@@ -419,7 +426,23 @@ func (vm *ViewModel) refreshStatus() {
 	c := s.Counts()
 	vm.Status.Set(strconv.Itoa(vm.Rows.Len()) + " of " + strconv.Itoa(len(vm.allRows)) + " sessions shown (" + strconv.Itoa(c.Active) + " active in " + s.ActiveFor + ") | " +
 		strconv.Itoa(c.Agents) + " sub-agents | " + strconv.Itoa(c.Repos) + " repos (" + strconv.Itoa(c.Held) + " held) | " +
-		strconv.Itoa(c.Tells) + " tells | " + strconv.Itoa(c.Anomalies) + " anomalies | " + s.At.Format("15:04:05") + vm.notDrawn)
+		strconv.Itoa(c.Tells) + " tells | " + strconv.Itoa(c.Anomalies) + " anomalies" + vm.notDrawn)
+}
+
+// usageSig is a hash of what the Quota tab is built from: equal for two Usage
+// values with the same content, "" for none.
+func usageSig(u *model.Usage) string {
+	if u == nil {
+		return ""
+	}
+	c := *u
+	c.At = 0 // the instant the view was built moves every pass and is drawn nowhere
+	b, err := json.Marshal(&c)
+	if err != nil { // cannot happen for this type; never equal to a real hash
+		return "unhashable"
+	}
+	h := sha256.Sum256(b)
+	return string(h[:])
 }
 
 // onQuery narrows the table and dims the graph.

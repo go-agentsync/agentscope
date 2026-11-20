@@ -106,19 +106,25 @@ no Go toolchain.`,
 	return cmd
 }
 
+// userCacheDir and userConfigDir are replaced by a test that needs them to fail.
+var (
+	userCacheDir  = os.UserCacheDir
+	userConfigDir = os.UserConfigDir
+)
+
 // usageDirs are where the Quota tab keeps what it learns: the transcript sums in
 // the cache directory (rebuildable), the recorded official readings in the
 // config directory (not rebuildable, so not a cache).
 func usageDirs(cacheDir, history string) (cache, config string, err error) {
 	if cacheDir == "" {
-		base, err := os.UserCacheDir()
+		base, err := userCacheDir()
 		if err != nil {
 			return "", "", err
 		}
 		cacheDir = filepath.Join(base, "agentscope")
 	}
 	if history == "" {
-		base, err := os.UserConfigDir()
+		base, err := userConfigDir()
 		if err != nil {
 			return "", "", err
 		}

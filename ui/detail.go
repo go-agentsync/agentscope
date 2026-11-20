@@ -153,10 +153,11 @@ func anomalyLines(s model.Snapshot) []string {
 	st := s.Stats
 	lines = append(lines,
 		"",
-		"read: "+strconv.Itoa(st.TranscriptsRead)+" of "+strconv.Itoa(st.TranscriptsSeen)+" transcripts this pass ("+strconv.FormatInt(st.BytesRead/1024, 10)+" KiB), "+
+		// Only what holds still between passes: a per-pass byte count or timing here
+		// would repaint the panel on every snapshot of an idle network.
+		"read: "+strconv.Itoa(st.TranscriptsSeen)+" transcripts, "+
 			strconv.Itoa(st.LeasesRead)+" leases ("+strconv.Itoa(st.LeasesTorn)+" torn), "+strconv.Itoa(st.TellsRead)+" tells ("+strconv.Itoa(st.TellsDropped)+" outside the window)",
-		"expired leases beyond the horizon, not listed: "+strconv.Itoa(st.ExpiredNotListed),
-		"collected in "+strconv.FormatInt(st.ElapsedMicros/1000, 10)+" ms")
+		"expired leases beyond the horizon, not listed: "+strconv.Itoa(st.ExpiredNotListed))
 	return lines
 }
 

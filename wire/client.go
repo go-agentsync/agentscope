@@ -17,13 +17,17 @@ type Client struct{ cc *grpc.ClientConn }
 
 // Dial connects to the service at wsURL (ws:// or wss://). The connection is
 // lazy: the first call opens it.
-func Dial(wsURL string) (*Client, error) {
+func Dial(wsURL string) (*Client, error) { return dial(wsURL) }
+
+// dial is Dial with extra options, which is what lets a test hand
+// grpc.NewClient an option it refuses.
+func dial(wsURL string, extra ...grpc.DialOption) (*Client, error) {
 	opt, err := wstransport.DialOption(wsURL, wstransport.ClientConfig{})
 	if err != nil {
 		return nil, err
 	}
 	opts := append(DialOptions(), grpc.WithTransportCredentials(insecure.NewCredentials()), opt)
-	cc, err := grpc.NewClient("passthrough:///agentscope", opts...)
+	cc, err := grpc.NewClient("passthrough:///agentscope", append(opts, extra...)...)
 	if err != nil {
 		return nil, err
 	}

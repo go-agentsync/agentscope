@@ -27,21 +27,55 @@ func main() {
 		println("agentscope-web: no #screen canvas in the host page")
 		return
 	}
-	canvas.Set("width", ui.SurfaceW)
-	canvas.Set("height", ui.SurfaceH)
 	ctx2d := canvas.Call("getContext", "2d")
+	// Go's wasm runtime has no time zone: show the browser's.
+	_, off := time.Now().Zone()
+	if o := -js.Global().Get("Date").New().Call("getTimezoneOffset").Int() * 60; o != off {
+		time.Local = time.FixedZone("browser", o)
+	}
 
-	local := make([]byte, 4*ui.SurfaceW*ui.SurfaceH)
-	imageData := ctx2d.Call("createImageData", ui.SurfaceW, ui.SurfaceH)
-	dst := imageData.Get("data")
-
-	var mu sync.Mutex
-	scene := ui.NewScene(ui.SurfaceW, ui.SurfaceH)
+	var (
+		mu        sync.Mutex
+		local     []byte
+		imageData js.Value
+		dst       js.Value
+		scene     = ui.NewScene(ui.DefaultW, ui.DefaultH)
+	)
 	render := func() {
 		scene.Draw(local)
 		js.CopyBytesToJS(dst, local)
 		ctx2d.Call("putImageData", imageData, 0, 0)
 	}
+	// fit makes the canvas the viewport, in device pixels, and lays the scene out
+	// again. The caller holds the lock.
+	fit := func() {
+		dpr := js.Global().Get("devicePixelRatio").Float()
+		if dpr <= 0 {
+			dpr = 1
+		}
+		root := doc.Get("documentElement")
+		w := int(float64(root.Get("clientWidth").Int())*dpr + 0.5)
+		h := int(float64(root.Get("clientHeight").Int())*dpr + 0.5)
+		if w < 1 || h < 1 {
+			return
+		}
+		canvas.Set("width", w)
+		canvas.Set("height", h)
+		local = make([]byte, 4*w*h)
+		imageData = ctx2d.Call("createImageData", w, h)
+		dst = imageData.Get("data")
+		scene.Resize(w, h, dpr)
+		render()
+	}
+	mu.Lock()
+	fit()
+	mu.Unlock()
+	js.Global().Call("addEventListener", "resize", js.FuncOf(func(js.Value, []js.Value) any {
+		mu.Lock()
+		defer mu.Unlock()
+		fit()
+		return nil
+	}))
 	// do runs fn under the scene lock and repaints when it says so.
 	do := func(fn func() bool) {
 		mu.Lock()
@@ -53,10 +87,10 @@ func main() {
 
 	coords := func(e js.Value) (int, int) {
 		rect := canvas.Call("getBoundingClientRect")
-		sx := rect.Get("width").Float() / float64(ui.SurfaceW)
-		sy := rect.Get("height").Float() / float64(ui.SurfaceH)
-		return int((e.Get("clientX").Float() - rect.Get("left").Float()) / sx),
-			int((e.Get("clientY").Float() - rect.Get("top").Float()) / sy)
+		sx := float64(canvas.Get("width").Int()) / rect.Get("width").Float()
+		sy := float64(canvas.Get("height").Int()) / rect.Get("height").Float()
+		return int((e.Get("clientX").Float() - rect.Get("left").Float()) * sx),
+			int((e.Get("clientY").Float() - rect.Get("top").Float()) * sy)
 	}
 	on := func(name string, h func(x, y int) bool) {
 		canvas.Call("addEventListener", name, js.FuncOf(func(_ js.Value, a []js.Value) any {

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"type\":\"assistant\",\"timestamp\":\"2026-11-20T07:00:00Z\",\"message\":{\"id\":\"m\",\"model\":\"claude-opus-5-5\",\"usage\":{\"output_tokens\":9223372036854775807,\"cache_read_input_tokens\":9223372036854775807}}}")

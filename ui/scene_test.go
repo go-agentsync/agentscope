@@ -6,15 +6,18 @@ import (
 	"github.com/go-widgets/toolkit"
 )
 
+// The size the tests lay the scene out at.
+const testW, testH = 1600, 900
+
 func newScene(t *testing.T) *Scene {
 	t.Helper()
-	s := NewScene(SurfaceW, SurfaceH)
+	s := NewScene(testW, testH)
 	s.VM().Apply(snap())
 	return s
 }
 
 func pixels(s *Scene) []byte {
-	buf := make([]byte, 4*SurfaceW*SurfaceH)
+	buf := make([]byte, 4*s.w*s.h)
 	s.Draw(buf)
 	return buf
 }
@@ -98,6 +101,7 @@ func TestSceneClickInGraphSelectsAndSyncsTableAndDetail(t *testing.T) {
 
 func TestSceneClickInTableSelectsTheNode(t *testing.T) {
 	s := newScene(t)
+	s.VM().PanelOpen.Set(true)
 	pixels(s)
 	tb := s.table.Bounds()
 	// Find, by the table's own hit-test, a y inside the second row.
@@ -139,7 +143,7 @@ func TestSceneTypingFiltersAndFocus(t *testing.T) {
 		t.Errorf("query %q", s.VM().Query.Get())
 	}
 	// A click on nothing drops the focus and the capture.
-	s.HandleClick(1, SurfaceH-1)
+	s.HandleClick(1, testH-1)
 	if s.HandleChar("x") || s.HandleMove(5, 5) || s.HandleRelease(5, 5) {
 		t.Error("a click outside every widget must drop focus")
 	}
@@ -147,6 +151,7 @@ func TestSceneTypingFiltersAndFocus(t *testing.T) {
 
 func TestSceneDragAndRelease(t *testing.T) {
 	s := newScene(t)
+	s.VM().PanelOpen.Set(true)
 	pixels(s)
 	db := s.detail.Bounds()
 	s.HandleClick(db.X+db.W-3, db.Y+10)
@@ -163,6 +168,7 @@ func TestSceneDragAndRelease(t *testing.T) {
 
 func TestSceneScrollReachesTheWidgetUnderThePointer(t *testing.T) {
 	s := newScene(t)
+	s.VM().PanelOpen.Set(true)
 	pixels(s)
 	db := s.detail.Bounds()
 	if !s.HandleScroll(db.X+10, db.Y+10, 3) {
@@ -174,7 +180,7 @@ func TestSceneScrollReachesTheWidgetUnderThePointer(t *testing.T) {
 }
 
 func TestSceneCheckButtonAndEscapeAndActivate(t *testing.T) {
-	s := NewScene(SurfaceW, SurfaceH)
+	s := NewScene(testW, testH)
 	s.VM().Apply(orgSnap())
 	pixels(s)
 	// The "expired leases" check button is bound to ShowExpired.
@@ -206,7 +212,7 @@ func TestSceneCheckButtonAndEscapeAndActivate(t *testing.T) {
 		t.Error("Escape did not collapse")
 	}
 	s.VM().ToggleOrg("node:o:ghost")
-	s.HandleClick(1, SurfaceH-1) // drops the focus
+	s.HandleClick(1, testH-1) // drops the focus
 	if !s.HandleKeyDown("Escape") || s.VM().Expanded.Len() != 0 {
 		t.Error("Escape with nothing focused must still collapse")
 	}

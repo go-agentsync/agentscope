@@ -34,8 +34,8 @@ github.com/go-widgets/painter v0.17.0 h1:PB/Xr0flFR9qL2/RPhbJOeyU6PPzcGyf3Qx4RRn
 github.com/go-widgets/painter v0.17.0/go.mod h1:8kERcZUoWNyLIas1NsMWiYynvvyx+hcB2cNIh0Bx0yc=
 github.com/go-widgets/textinput v0.1.0 h1:ifx1RjbPIWtlokoBLV1ZwlH+0CeixoMbswlqhNvYNmw=
 github.com/go-widgets/textinput v0.1.0/go.mod h1:Y/k3PDtUEMQ/4psCVKdmUStNWa/EsVAMcCKG2lEtQ5c=
-github.com/go-widgets/toolkit v0.385.0 h1:XF3XLB1aeWqq8WPCBjuupspEkWtZrrEFclNSk8+cGIo=
-github.com/go-widgets/toolkit v0.385.0/go.mod h1:1ks//sTcSYxAGx9G5vZaAtUiJ9EKFITW2siDFRURwcc=
+github.com/go-widgets/toolkit v0.386.0 h1:717uCmV+imYxOY8Hrtu8nknjwG9VKsrX+m/+x0v4TDs=
+github.com/go-widgets/toolkit v0.386.0/go.mod h1:1ks//sTcSYxAGx9G5vZaAtUiJ9EKFITW2siDFRURwcc=
 github.com/go-widgets/vcs v0.1.0 h1:1pZQygSsKBWZepAgsTdqh1bwHBjPwaLM4p7bAAONGnk=
 github.com/go-widgets/vcs v0.1.0/go.mod h1:c2SbtsVVLJUJAf/vOeMKkFWZRFyMAeDrY8rfyUyIevs=
 github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=

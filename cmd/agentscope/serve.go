@@ -9,11 +9,16 @@ import (
 	"time"
 
 	"github.com/go-agentsync/agentscope/collect"
+	"github.com/go-agentsync/agentscope/quota"
 	"github.com/go-agentsync/agentscope/serve"
+	"github.com/go-agentsync/agentscope/usage"
 	"github.com/go-agentsync/agentscope/webui"
 	"github.com/go-agentsync/agentscope/wire"
 	"github.com/spf13/cobra"
 )
+
+// quotaRunner reads the official usage; tests replace it.
+var quotaRunner quota.Runner = quota.Exec
 
 func serveCmd() *cobra.Command {
 	var (
@@ -21,6 +26,7 @@ func serveCmd() *cobra.Command {
 		addr     string
 		web      string
 		cacheDir string
+		history  string
 		interval time.Duration
 	)
 	cmd := &cobra.Command{
@@ -61,12 +67,18 @@ no Go toolchain.`,
 				return fmt.Errorf("no UI in %s: %w", dir, err)
 			}
 			ui, source := os.DirFS(dir), "the UI in "+dir
-			hub := wire.NewHub(collect.New(o), interval, 10*time.Second)
+			ucache, uconf, err := usageDirs(cacheDir, history)
+			if err != nil {
+				return err
+			}
+			eng := usage.NewEngine(o.ClaudeDir, ucache, uconf, quotaRunner)
+			hub := wire.NewHub(usage.Source{Inner: collect.New(o), Eng: eng}, interval, 10*time.Second)
 			srv, err := serve.New(serve.Config{Addr: addr, Web: ui, Scope: hub})
 			if err != nil {
 				return err
 			}
 			go hub.Run(ctx)
+			go eng.Run(ctx)
 			fmt.Fprintf(cmd.OutOrStdout(), "agentscope %s serving %s (%s); Ctrl-C to stop\n", version(), srv.URL(), source)
 			return srv.Serve(ctx)
 		},
@@ -75,6 +87,28 @@ no Go toolchain.`,
 	cmd.Flags().StringVar(&addr, "addr", "127.0.0.1:8765", "loopback address to listen on (port 0 picks one)")
 	cmd.Flags().StringVar(&web, "web", "", "serve the UI from this directory instead of building it on first run")
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "where the built UI is kept (default <user cache dir>/agentscope)")
+	cmd.Flags().StringVar(&history, "history-dir", "", "where the official usage readings are recorded (default <user config dir>/agentscope)")
 	cmd.Flags().DurationVar(&interval, "interval", 2*time.Second, "how often the network is collected")
 	return cmd
+}
+
+// usageDirs are where the Quota tab keeps what it learns: the transcript sums in
+// the cache directory (rebuildable), the recorded official readings in the
+// config directory (not rebuildable, so not a cache).
+func usageDirs(cacheDir, history string) (cache, config string, err error) {
+	if cacheDir == "" {
+		base, err := os.UserCacheDir()
+		if err != nil {
+			return "", "", err
+		}
+		cacheDir = filepath.Join(base, "agentscope")
+	}
+	if history == "" {
+		base, err := os.UserConfigDir()
+		if err != nil {
+			return "", "", err
+		}
+		history = filepath.Join(base, "agentscope")
+	}
+	return cacheDir, history, nil
 }

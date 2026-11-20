@@ -28,6 +28,8 @@ captures never go inside a repository.
 | `~/.claude/agentsync/sessions/<uuid>.json` | **how many** entries and when the last was added; the entries themselves are memory-index text and are decoded into nothing |
 | `~/.claude/projects/*/<session>.jsonl` | timestamp, cwd, git branch, slug, the session title, PR link, and the *names* of `SendMessage` recipients |
 | `~/.claude/projects/*/<session>/subagents/agent-*.meta.json` | agent type, description, spawn depth |
+| `~/.claude/projects/**/*.jsonl` (the Quota tab) | per assistant message: timestamp, `message.id`, `message.model`, `usage.output_tokens`, `usage.cache_read_input_tokens`, summed per 10 minutes and model family |
+| `aiquota status -o json` (the Quota tab) | the official usage windows: label, percent, reset instant; whether a window is available |
 
 **Privacy.** Only that metadata is extracted. A transcript line is decoded into a
 struct that has no field for message content, so a prompt or a response is never
@@ -79,6 +81,55 @@ newest 64 sessions, 6 sub-agents per session (then a "+N more" node) and 200
 repositories (live leases first); the table and the detail pane list everything
 and the status line says what the graph left out.
 
+### The whole surface, the panel and the tabs
+
+The canvas is the browser's viewport: its size is the viewport times
+`devicePixelRatio`, it is laid out again on every resize (the page has no scrollbars and no
+maximum width), and the graph takes every pixel the header and the tab strip leave.
+The layout is in logical pixels and the toolkit's metric scale (`SetMetricScale`) is set
+to the device pixel ratio, so a 2x screen is drawn at 2x and not stretched. The
+graph's clusters flow into as many columns as the width holds; a resize may lay the
+graph out again, an edge update never does.
+
+The **sessions table and the details are a side panel** over the graph (a toolkit
+`Overlay` layer, 420 logical pixels, right-aligned under the tab strip), **closed by
+default**. The **Sessions (t)** button and the key `t` (when the search box is not
+focused) toggle it, and selecting a node opens it on the details. Its state, like
+every other, is ViewModel state (`PanelOpen`, `TogglePanel`); a click on the open panel
+never reaches the graph beneath it. The panel is not shown on the Quota tab.
+
+### Quota
+
+The second tab, **Quota**, has a span selector (**5 h**, **7 days**, **4 x 7 days**).
+
+*Official usage* comes from `aiquota status -o json` (run from `PATH`, fixed arguments, no
+shell; aiquota already shares one reading between processes and serves stale data when
+rate-limited, so agentscope reads it **at most every 5 minutes**). aiquota keeps only
+its last reading, so agentscope **records the history**: append-only JSON lines in
+`<user config dir>/agentscope/quota.jsonl` (`--history-dir`), rotated to `quota.jsonl.1`
+past 4 MiB. A window the provider reports as not available is **listed, never drawn as
+0**. The 5 h and 7 day charts draw each window over its own span with its reset as a
+vertical marker; a line needs two recorded readings, and until then the page says
+*recording since <date>*.
+
+*Local consumption* is derived from the transcripts: tokens per model family
+(Opus, Sonnet, Haiku, Fable, stacked), **output and cache-read apart** (the two differ by
+three orders of magnitude, so they are two charts). One API message is split over
+several transcript entries that share a `message.id`; within a file the entries are
+**counted once** (the larger counts win). The transcripts are read **incrementally**:
+the scanner remembers each file's offset and keeps only per-10-minute sums, cached in
+`<user cache dir>/agentscope/usage.json`, so a restart reads what was appended and not
+gigabytes; a transcript untouched for 35 days is not opened.
+
+**4 x 7 days** aligns four weekly windows on the **weekly reset instant aiquota
+reports** (not calendar weeks; the earlier resets are found by stepping back 7 days; if
+aiquota cannot be read the last recorded reset is used and the page says so). Chart A
+compares the weeks: one stacked bar per week, output or cache-read (selectable); chart
+B draws four lines of cumulative consumption over days 0 to 7 of each window on one
+axis, so this week can be read against the three before it; the final official weekly
+percentage of each week is shown where it was recorded and "not recorded" where it was
+not. The current week is marked as in progress.
+
 ### Look
 
 The look is the toolkit's **Slate** theme (`toolkit.Slate(brand, dark)`), modelled on
@@ -86,7 +137,7 @@ the go-authn account page: a slate-50 page, white cards with a soft border and
 shadow, slate-900 ink, and the brand `#0079a8` as the accent (its hover and
 brand-ink variants are derived from the brand and match the page's). A header card
 holds the Iconoir logo, the name, a **connection chip** and **model-count chips**;
-the graph, the sessions table and the details each sit on their own card. Nothing is
+the graph, the sessions table, the details and each chart sit on their own card. Nothing is
 drawn by hand in this repository: the cards are `Frame.Card`, the pills `Chip` with
 `ChipBrand` / `ChipPlain`, the nodes and clusters `GraphView` with `CornerRadius`.
 **Light and dark follow the system** (`prefers-color-scheme`, read by the wasm host

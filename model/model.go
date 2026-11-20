@@ -26,6 +26,8 @@ type Snapshot struct {
 	Tells     []Tell    `json:"tells"`
 	Anomalies []Anomaly `json:"anomalies"`
 	Stats     Stats     `json:"stats"`
+	// Usage is the Quota tab's data; nil until the first scan finished.
+	Usage *Usage `json:"usage,omitempty"`
 }
 
 // Session is one Claude Code session, with its sub-agents.

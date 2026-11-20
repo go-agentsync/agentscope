@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"at\":\"2026-11-20T07:12:08Z\",\"windows\":[{\"label\":\"Weekly (7 day)\",\"used_percent\":1e300,\"verdict\":\"available\"}]}")

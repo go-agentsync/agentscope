@@ -14,6 +14,12 @@ import (
 	"github.com/go-widgets/toolkit"
 )
 
+// The tabs.
+const (
+	TabGraph = iota
+	TabQuota
+)
+
 // ModelChipSlots is how many model families the header shows chips for.
 const ModelChipSlots = 3
 
@@ -81,6 +87,22 @@ type ViewModel struct {
 	// families ("Sonnet 29"), "" for a slot with none.
 	ModelChips [ModelChipSlots]*mvvm.Observable[string]
 
+	// Tab is the shown tab: TabGraph or TabQuota.
+	Tab *mvvm.Observable[int]
+	// PanelOpen is whether the side panel (the sessions table and the details)
+	// is open over the graph; it starts closed, TogglePanel flips it, and
+	// selecting a node opens it.
+	PanelOpen   *mvvm.Observable[bool]
+	TogglePanel *mvvm.Command
+	// Span is the Quota tab's span (SpanShort, SpanWeek, SpanWeeks) and Kind the
+	// token kind its 4 x 7 days charts show.
+	Span, Kind *mvvm.Observable[int]
+	// Usage is the Quota tab's data, from the last snapshot.
+	Usage *mvvm.Observable[*model.Usage]
+	// QuotaNotes is the line under the Quota charts: what is not available, what
+	// is not recorded, where the reset came from.
+	QuotaNotes *mvvm.Observable[string]
+
 	snap     model.Snapshot
 	have     bool
 	allRows  []Row
@@ -102,10 +124,18 @@ func NewViewModel() *ViewModel {
 		ShowExpired: mvvm.NewObservable(false),
 		Dark:        mvvm.NewObservable(false),
 		Expanded:    mvvm.NewObservableList[string](),
+
+		Tab:        mvvm.NewObservable(TabGraph),
+		PanelOpen:  mvvm.NewObservable(false),
+		Span:       mvvm.NewObservable(SpanWeek),
+		Kind:       mvvm.NewObservable(KindOutput),
+		Usage:      mvvm.NewObservable[*model.Usage](nil),
+		QuotaNotes: mvvm.NewObservable(""),
 	}
 	for i := range vm.ModelChips {
 		vm.ModelChips[i] = mvvm.NewObservable("")
 	}
+	vm.TogglePanel = mvvm.NewCommand(func() { vm.PanelOpen.Set(!vm.PanelOpen.Get()) }, nil)
 	vm.Query.SubscribeChanged(vm.onQuery)
 	vm.ShowExpired.SubscribeChanged(vm.refreshEdges)
 	vm.Expanded.SubscribeChanged(func() {
@@ -126,6 +156,7 @@ func (vm *ViewModel) Snapshot() (model.Snapshot, bool) { return vm.snap, vm.have
 // whose members did not change does not lay itself out again.
 func (vm *ViewModel) Apply(s model.Snapshot) {
 	vm.snap, vm.have = s, true
+	vm.Usage.Set(s.Usage)
 	vm.rebuildGraph()
 
 	vm.allRows = vm.allRows[:0]
@@ -246,6 +277,9 @@ func (vm *ViewModel) syncTableSel() {
 // onGraphSelected follows a click in the graph: the edges (focus), the table
 // and the detail pane.
 func (vm *ViewModel) onGraphSelected() {
+	if vm.Graph.Selected.Get() != "" {
+		vm.PanelOpen.Set(true) // a selection is read in the panel
+	}
 	vm.refreshEdges()
 	vm.syncTableSel()
 	vm.refreshDetail()

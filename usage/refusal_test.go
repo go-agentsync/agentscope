@@ -76,6 +76,21 @@ func TestScannerCountsRefusalsPerGateIncludingSubagentsAndUnknownOnes(t *testing
 	}
 }
 
+// The hour decides the order before the gate does, whichever gate sorts first.
+func TestRefusalsAreOrderedByHourBeforeGate(t *testing.T) {
+	root := t.TempDir()
+	older, newer := now.Add(-5*time.Hour), now.Add(-2*time.Hour)
+	write(t, root, "p/a.jsonl",
+		refusal(older, "t1", bashRefusal), refusal(newer, "t2", stampRefusal),
+		refusal(older, "t3", stampRefusal), refusal(newer, "t4", bashRefusal))
+	s := NewScanner(filepath.Join(root, "projects"), "")
+	s.Refresh(now)
+	rs := s.Refusals()
+	if len(rs) != 4 || rs[0].Hour != rs[1].Hour || rs[2].Hour != rs[3].Hour || rs[1].Hour >= rs[2].Hour {
+		t.Fatalf("%v", rs)
+	}
+}
+
 func TestScannerDoesNotCountWhatMerelyMentionsAHook(t *testing.T) {
 	root := t.TempDir()
 	at := now.Add(-time.Hour)

@@ -478,17 +478,25 @@ func (e *Engine) Step(ctx context.Context, now time.Time) {
 	e.aliases.Reload() // the owner may have edited the file by hand
 	e.scan.SetStamps(e.stamps.Load())
 	e.scan.Refresh(now)
-	gin := guard.Input{Now: now, RecErr: "recur is not configured", Refusals: e.scan.Refusals(), Scanned: e.scan.Scanned()}
-	if e.recur != nil {
-		gin.Rec, gin.RecErr = e.recur.Get(ctx, now)
-	}
-	g := guard.Build(gin)
+	g := guard.Build(e.guardInput(ctx, now))
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	in := e.input(now)
 	in.Hist = hist
 	e.view = Build(in, e.scan)
 	e.gview = g
+}
+
+// guardInput is what the Guardrails view is built from at now: the transcripts'
+// refusals, and what recur says (or why it says nothing).
+func (e *Engine) guardInput(ctx context.Context, now time.Time) guard.Input {
+	in := guard.Input{Now: now, Refusals: e.scan.Refusals(), Scanned: e.scan.Scanned()}
+	if e.recur == nil {
+		in.RecErr = "recur is not configured"
+		return in
+	}
+	in.Rec, in.RecErr = e.recur.Get(ctx, now)
+	return in
 }
 
 // SetRecur gives the engine the source of `recur --json` that the Guardrails tab

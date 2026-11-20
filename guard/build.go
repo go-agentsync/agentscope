@@ -2,6 +2,7 @@ package guard
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-agentsync/agentscope/model"
@@ -32,8 +33,10 @@ type Count struct {
 // Input is what Build needs.
 type Input struct {
 	Now time.Time
-	// Rec is what recur answered, nil with RecErr set when it could not be read.
-	Rec    *Recurrence
+	// Rec is what recur answered; RecErr is why it could not be read, "" when it
+	// could (and then Rec is its answer, however empty). A value and not a
+	// pointer: there is no nil to forget.
+	Rec    Recurrence
 	RecErr string
 	// Refusals are the refusals the transcripts hold; Scanned is whether they were
 	// scanned at all (false: not measured, which is not zero).
@@ -71,7 +74,7 @@ func (s span) weekOf(at int64) int {
 
 // Build assembles the tab's data.
 func Build(in Input) *model.Guardrails {
-	g := &model.Guardrails{At: in.Now.Unix(), RecurMeasured: in.Rec != nil, RecurErr: in.RecErr, RefusalsMeasured: in.Scanned}
+	g := &model.Guardrails{At: in.Now.Unix(), RecurMeasured: in.RecErr == "", RecurErr: in.RecErr, RefusalsMeasured: in.Scanned}
 	cur := weekStart(in.Now)
 	for i := Weeks - 1; i >= 0; i-- {
 		g.Weeks = append(g.Weeks, cur.AddDate(0, 0, -7*i).Unix())
@@ -81,9 +84,6 @@ func Build(in Input) *model.Guardrails {
 
 	g.Gates, g.Refusals, g.ThisWeek, g.LastWeek = refusalWeeks(sp, in.Refusals)
 
-	if in.Rec == nil {
-		return g
-	}
 	g.Lessons, g.Unreadable = len(in.Rec.Lessons), in.Rec.Totals.Unreadable
 	window := in.Now.Add(-SilentWeeks * 7 * day).Unix()
 	recent := map[string]int64{} // refusals per gate in the silent window
@@ -228,8 +228,6 @@ func cut(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	for n > 0 && s[n]&0xC0 == 0x80 { // do not cut a UTF-8 sequence in two
-		n--
-	}
-	return s[:n] + "..."
+	// A cut inside a UTF-8 sequence leaves a partial one at the end: drop it.
+	return strings.ToValidUTF8(s[:min(n, len(s))], "") + "..."
 }

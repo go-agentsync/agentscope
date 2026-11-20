@@ -42,21 +42,21 @@ type Lesson struct {
 // Parse decodes recur's JSON; it refuses what has no "lessons" key, so an answer
 // that is not recur's (an error page, a usage text) is a failure and not an empty
 // list.
-func Parse(b []byte) (*Recurrence, error) {
+func Parse(b []byte) (Recurrence, error) {
 	var probe struct {
 		Lessons *json.RawMessage `json:"lessons"`
 	}
 	if err := json.Unmarshal(b, &probe); err != nil {
-		return nil, fmt.Errorf("recur --json: %w", err)
+		return Recurrence{}, fmt.Errorf("recur --json: %w", err)
 	}
 	if probe.Lessons == nil {
-		return nil, errors.New("recur --json: no \"lessons\" in the answer")
+		return Recurrence{}, errors.New("recur --json: no \"lessons\" in the answer")
 	}
 	var r Recurrence
 	if err := json.Unmarshal(b, &r); err != nil {
-		return nil, fmt.Errorf("recur --json: %w", err)
+		return Recurrence{}, fmt.Errorf("recur --json: %w", err)
 	}
-	return &r, nil
+	return r, nil
 }
 
 // Runner runs recur on a memory directory and returns its standard output. A
@@ -133,31 +133,35 @@ type Source struct {
 
 	mu   sync.Mutex
 	at   time.Time
-	rec  *Recurrence
+	rec  Recurrence
 	err  string
 	read bool
 }
 
 // Get is the last answer, running recur first when it has not been read for
-// MinInterval. err is "" when rec is the answer.
-func (s *Source) Get(ctx context.Context, now time.Time) (rec *Recurrence, err string) {
+// MinInterval. err is "" when rec is the answer; otherwise rec is empty and err
+// says why, so nothing shows an old answer as current.
+func (s *Source) Get(ctx context.Context, now time.Time) (rec Recurrence, err string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.read && now.Sub(s.at) < MinInterval {
-		return s.rec, s.err
-	}
-	s.read, s.at = true, now
-	s.rec, s.err = nil, ""
-	if s.Dir == "" {
-		s.err = "no recur ledger found under the Claude directory (pass --memory-dir)"
-		return nil, s.err
-	}
-	b, e := s.Run(ctx, s.Dir)
-	if e == nil {
-		s.rec, e = Parse(b)
-	}
-	if e != nil {
-		s.rec, s.err = nil, e.Error()
+	if !s.read || now.Sub(s.at) >= MinInterval {
+		s.read, s.at = true, now
+		s.rec, s.err = s.run(ctx)
 	}
 	return s.rec, s.err
+}
+
+func (s *Source) run(ctx context.Context) (Recurrence, string) {
+	if s.Dir == "" {
+		return Recurrence{}, "no recur ledger found under the Claude directory (pass --memory-dir)"
+	}
+	b, err := s.Run(ctx, s.Dir)
+	if err != nil {
+		return Recurrence{}, err.Error()
+	}
+	rec, err := Parse(b)
+	if err != nil {
+		return Recurrence{}, err.Error()
+	}
+	return rec, ""
 }

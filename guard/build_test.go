@@ -39,8 +39,8 @@ func lesson(name, decision, text string, writtenAt *string, recs ...string) Less
 	return l
 }
 
-func recurrence(ls ...Lesson) *Recurrence {
-	r := &Recurrence{Lessons: ls}
+func recurrence(ls ...Lesson) Recurrence {
+	r := Recurrence{Lessons: ls}
 	r.Totals.Lessons = len(ls)
 	return r
 }
@@ -249,8 +249,11 @@ func TestTextsAreBoundedAndNeverCutInsideACharacter(t *testing.T) {
 	if len(r.Lines) != maxLines || r.Total != maxLines+5 || r.Dated != maxLines+5 {
 		t.Fatalf("%d lines, total %d", len(r.Lines), r.Total)
 	}
-	if cut("short", 10) != "short" {
-		t.Fatal("a short text was cut")
+	if cut("short", 10) != "short" || cut("exact", 5) != "exact" || cut("exactly", 5) != "exact..." {
+		t.Fatal("a text was cut at the wrong length")
+	}
+	if got := cut("aé", 2); got != "a..." { // the cut falls inside é
+		t.Fatalf("%q", got)
 	}
 }
 

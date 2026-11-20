@@ -179,29 +179,29 @@ func TestSourceReadsAtMostEveryTenMinutesAndSaysWhyItFailed(t *testing.T) {
 		return []byte(realShaped), nil
 	}}
 	t0 := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
-	if r, e := s.Get(context.Background(), t0); r == nil || e != "" || calls != 1 {
+	if r, e := s.Get(context.Background(), t0); len(r.Lessons) != 1 || e != "" || calls != 1 {
 		t.Fatalf("%v %q %d", r, e, calls)
 	}
-	if r, _ := s.Get(context.Background(), t0.Add(MinInterval-time.Second)); r == nil || calls != 1 {
+	if r, e := s.Get(context.Background(), t0.Add(MinInterval-time.Second)); len(r.Lessons) != 1 || e != "" || calls != 1 {
 		t.Fatalf("read again within %s: %d calls", MinInterval, calls)
 	}
 	fail = true
 	// A failure after a success is a failure: the old answer is not shown as current.
-	if r, e := s.Get(context.Background(), t0.Add(MinInterval)); r != nil || e != "recur: boom" || calls != 2 {
+	if r, e := s.Get(context.Background(), t0.Add(MinInterval)); len(r.Lessons) != 0 || e != "recur: boom" || calls != 2 {
 		t.Fatalf("%v %q %d", r, e, calls)
 	}
 	// And the failure is kept for the interval too: recur is not hammered.
-	if r, e := s.Get(context.Background(), t0.Add(MinInterval+time.Minute)); r != nil || e != "recur: boom" || calls != 2 {
+	if r, e := s.Get(context.Background(), t0.Add(MinInterval+time.Minute)); len(r.Lessons) != 0 || e != "recur: boom" || calls != 2 {
 		t.Fatalf("%v %q %d", r, e, calls)
 	}
 	// An answer that does not parse is a failure.
 	bad := &Source{Dir: "/m", Run: func(context.Context, string) ([]byte, error) { return []byte("usage"), nil }}
-	if r, e := bad.Get(context.Background(), t0); r != nil || e == "" {
+	if r, e := bad.Get(context.Background(), t0); len(r.Lessons) != 0 || !strings.Contains(e, "recur --json") {
 		t.Fatalf("%v %q", r, e)
 	}
 	// No memory directory: nothing is run.
 	none := &Source{Run: func(context.Context, string) ([]byte, error) { t.Fatal("ran"); return nil, nil }}
-	if r, e := none.Get(context.Background(), t0); r != nil || !strings.Contains(e, "--memory-dir") {
+	if r, e := none.Get(context.Background(), t0); len(r.Lessons) != 0 || !strings.Contains(e, "--memory-dir") {
 		t.Fatalf("%v %q", r, e)
 	}
 }

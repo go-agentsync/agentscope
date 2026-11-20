@@ -75,6 +75,7 @@ type Store interface {
 const (
 	keyPanelW = "agentscope.panelW"
 	keyColW   = "agentscope.colW"
+	keySplit  = "agentscope.split"
 )
 
 // SetStore restores the viewer's layout from st and keeps it there as it changes.
@@ -94,7 +95,13 @@ func (s *Scene) SetStore(st Store) {
 			}
 		}
 	}
+	if v, ok := st.Get(keySplit); ok {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			vm.Split.Set(n)
+		}
+	}
 	s.unbind = append(s.unbind,
+		vm.Split.SubscribeChanged(func() { st.Set(keySplit, strconv.Itoa(vm.Split.Get())) }),
 		vm.PanelW.SubscribeChanged(func() { st.Set(keyPanelW, strconv.Itoa(vm.PanelW.Get())) }),
 		vm.ColW.SubscribeChanged(func() { st.Set(keyColW, formatColW(vm.ColW.Slice())) }),
 	)

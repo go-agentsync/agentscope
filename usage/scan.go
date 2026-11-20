@@ -15,10 +15,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-agentsync/agentscope/model"
+	"github.com/go-agentsync/agentscope/quota"
 )
 
 // Families are the stack order of the charts.
@@ -47,6 +49,7 @@ type Counts struct {
 // entry of the same API message replaces its counts instead of adding to them.
 type recent struct {
 	ID     string `json:"i"`
+	Acct   string `json:"a,omitempty"`
 	Bucket int64  `json:"b"`
 	Family int    `json:"f"`
 	Out    int64  `json:"o"`
@@ -54,6 +57,10 @@ type recent struct {
 }
 
 type fileState struct {
+	// Owner is the account of the latest session-owner entry read in this file:
+	// the account every later assistant entry is attributed to. "" until the
+	// file has shown one: those entries are unattributed, never guessed.
+	Owner  string   `json:"own,omitempty"`
 	Offset int64    `json:"off"`
 	Size   int64    `json:"size"`
 	Recent []recent `json:"recent,omitempty"`
@@ -68,19 +75,27 @@ type Stats struct {
 	Bad            int // usage lines that did not decode
 }
 
+// sumKey is one bucket's tokens of one family for one account ("" is
+// unattributed).
+type sumKey struct {
+	Bucket int64
+	Acct   string
+	Fam    int
+}
+
 // Scanner holds the per-file offsets and the per-bucket sums.
 type Scanner struct {
 	root  string // ~/.claude/projects
 	cache string // cache file, "" for none
 	files map[string]*fileState
-	sums  map[int64][]Counts // bucket start -> per family
+	sums  map[sumKey]Counts
 	dirty bool
 }
 
 // NewScanner reads transcripts under root and keeps its cache in cacheFile
 // ("" keeps none). A cache that cannot be read is ignored: it is rebuilt.
 func NewScanner(root, cacheFile string) *Scanner {
-	s := &Scanner{root: root, cache: cacheFile, files: map[string]*fileState{}, sums: map[int64][]Counts{}}
+	s := &Scanner{root: root, cache: cacheFile, files: map[string]*fileState{}, sums: map[sumKey]Counts{}}
 	s.load()
 	return s
 }
@@ -102,7 +117,15 @@ type usageLine struct {
 var (
 	assistantMark = []byte(`"type":"assistant"`)
 	usageMark     = []byte(`"usage"`)
+	ownerMark     = []byte(`"type":"session-owner"`)
 )
+
+// ownerLine is a session-owner entry: Claude Code writes one when a session
+// starts or resumes, naming the account it runs as. It has no timestamp: its
+// position in the file is what orders it among the assistant entries.
+type ownerLine struct {
+	AccountUUID string `json:"accountUuid"`
+}
 
 func familyIndex(modelID string) int {
 	f := model.ModelFamily(modelID)
@@ -151,9 +174,9 @@ func (s *Scanner) Refresh(now time.Time) Stats {
 			s.dirty = true
 		}
 	}
-	for b := range s.sums {
-		if b < cutoff.Unix()-BucketSec {
-			delete(s.sums, b)
+	for k := range s.sums {
+		if k.Bucket < cutoff.Unix()-BucketSec {
+			delete(s.sums, k)
 			s.dirty = true
 		}
 	}
@@ -196,6 +219,13 @@ func (s *Scanner) scanFile(p string, size int64, fs *fileState, cutoff time.Time
 
 // fold adds one transcript line to the sums.
 func (s *Scanner) fold(line []byte, fs *fileState, cutoff time.Time, st *Stats) {
+	if bytes.Contains(line, ownerMark) {
+		var o ownerLine
+		if json.Unmarshal(line, &o) == nil && o.AccountUUID != "" {
+			fs.Owner = quota.AccountKey(o.AccountUUID)
+		}
+		return
+	}
 	if !bytes.Contains(line, assistantMark) || !bytes.Contains(line, usageMark) {
 		return
 	}
@@ -226,30 +256,28 @@ func (s *Scanner) fold(line []byte, fs *fileState, cutoff time.Time, st *Stats) 
 			if r.ID != id {
 				continue
 			}
-			s.add(r.Bucket, r.Family, max(out, r.Out)-r.Out, max(cr, r.Cache)-r.Cache)
+			s.add(r.Bucket, r.Acct, r.Family, max(out, r.Out)-r.Out, max(cr, r.Cache)-r.Cache)
 			r.Out, r.Cache = max(out, r.Out), max(cr, r.Cache)
 			return
 		}
-		fs.Recent = append(fs.Recent, recent{ID: id, Bucket: bucket, Family: fam, Out: out, Cache: cr})
+		fs.Recent = append(fs.Recent, recent{ID: id, Acct: fs.Owner, Bucket: bucket, Family: fam, Out: out, Cache: cr})
 		if len(fs.Recent) > recentIDs {
 			fs.Recent = fs.Recent[len(fs.Recent)-recentIDs:]
 		}
 	}
-	s.add(bucket, fam, out, cr)
+	s.add(bucket, fs.Owner, fam, out, cr)
 	st.Counted++
 }
 
-func (s *Scanner) add(bucket int64, fam int, out, cr int64) {
+func (s *Scanner) add(bucket int64, acct string, fam int, out, cr int64) {
 	if out == 0 && cr == 0 {
 		return
 	}
-	c := s.sums[bucket]
-	if c == nil {
-		c = make([]Counts, len(Families))
-		s.sums[bucket] = c
-	}
-	c[fam].Out += out
-	c[fam].CacheRead += cr
+	k := sumKey{bucket, acct, fam}
+	c := s.sums[k]
+	c.Out += out
+	c.CacheRead += cr
+	s.sums[k] = c
 	s.dirty = true
 }
 
@@ -283,23 +311,60 @@ func readLine(br *bufio.Reader) (line []byte, n int64, complete bool) {
 	}
 }
 
-// Buckets returns n buckets of step seconds from start, per family and kind:
-// out[family][i] and cacheRead[family][i]. step is a multiple of BucketSec.
-func (s *Scanner) Buckets(start, step int64, n int) (out, cacheRead [][]float64) {
-	out = make([][]float64, len(Families))
-	cacheRead = make([][]float64, len(Families))
+// Accounts is the keys of the accounts that have tokens, and whether any
+// tokens are unattributed.
+func (s *Scanner) Accounts() (keys []string, unattributed bool) {
+	seen := map[string]bool{}
+	for k := range s.sums {
+		if k.Acct == "" {
+			unattributed = true
+		} else if !seen[k.Acct] {
+			seen[k.Acct] = true
+			keys = append(keys, k.Acct)
+		}
+	}
+	sort.Strings(keys)
+	return keys, unattributed
+}
+
+// Which says whose tokens a series counts.
+type Which int
+
+const (
+	// Only counts one account (a key).
+	Only Which = iota
+	// Every counts every account and the unattributed tokens, the latter as an
+	// extra last layer.
+	Every
+)
+
+// Buckets returns n buckets of step seconds from start: out[layer][i] and
+// cacheRead[layer][i], one layer per family, and for Every one more for the
+// unattributed tokens. step is a multiple of BucketSec.
+func (s *Scanner) Buckets(start, step int64, n int, w Which, acct string) (out, cacheRead [][]float64) {
+	layers := len(Families)
+	if w == Every {
+		layers++
+	}
+	out = make([][]float64, layers)
+	cacheRead = make([][]float64, layers)
 	for f := range out {
 		out[f], cacheRead[f] = make([]float64, n), make([]float64, n)
 	}
-	for b, v := range s.sums {
-		i := int((b - start) / step)
-		if b < start || i >= n {
+	for k, v := range s.sums {
+		i := int((k.Bucket - start) / step)
+		if k.Bucket < start || i >= n {
 			continue
 		}
-		for f := range Families {
-			out[f][i] += float64(v[f].Out)
-			cacheRead[f][i] += float64(v[f].CacheRead)
+		layer := k.Fam
+		switch {
+		case w == Only && k.Acct != acct:
+			continue
+		case w == Every && k.Acct == "":
+			layer = len(Families)
 		}
+		out[layer][i] += float64(v.Out)
+		cacheRead[layer][i] += float64(v.CacheRead)
 	}
 	return out, cacheRead
 }
@@ -308,10 +373,19 @@ func (s *Scanner) Buckets(start, step int64, n int) (out, cacheRead [][]float64)
 type cacheFile struct {
 	Version int                   `json:"v"`
 	Files   map[string]*fileState `json:"files"`
-	Sums    map[int64][]Counts    `json:"sums"`
+	Sums    []cachedSum           `json:"sums"`
 }
 
-const cacheVersion = 1
+// cachedSum is a sum as kept on disk (a JSON object cannot be keyed by a struct).
+type cachedSum struct {
+	B int64  `json:"b"`
+	A string `json:"a,omitempty"`
+	F int    `json:"f"`
+	C Counts `json:"c"`
+}
+
+// The version 1 cache had no accounts; it is rebuilt.
+const cacheVersion = 2
 
 func (s *Scanner) load() {
 	if s.cache == "" {
@@ -330,9 +404,9 @@ func (s *Scanner) load() {
 			s.files[p] = f
 		}
 	}
-	for b, v := range c.Sums {
-		if len(v) == len(Families) {
-			s.sums[b] = v
+	for _, c := range c.Sums {
+		if c.F >= 0 && c.F < len(Families) {
+			s.sums[sumKey{c.B, c.A, c.F}] = c.C
 		}
 	}
 }
@@ -341,7 +415,11 @@ func (s *Scanner) save() {
 	if s.cache == "" || !s.dirty {
 		return
 	}
-	b, err := json.Marshal(cacheFile{Version: cacheVersion, Files: s.files, Sums: s.sums})
+	sums := make([]cachedSum, 0, len(s.sums))
+	for k, v := range s.sums {
+		sums = append(sums, cachedSum{k.Bucket, k.Acct, k.Fam, v})
+	}
+	b, err := json.Marshal(cacheFile{Version: cacheVersion, Files: s.files, Sums: sums})
 	if err != nil || os.MkdirAll(filepath.Dir(s.cache), 0o700) != nil {
 		return
 	}

@@ -100,35 +100,69 @@ never reaches the graph beneath it. The panel is not shown on the Quota tab.
 
 ### Quota
 
-The second tab, **Quota**, has a span selector (**5 h**, **7 days**, **4 x 7 days**).
+The second tab, **Quota**, has an **account selector** ("All (aggregated)" or one
+account; ViewModel state), a span selector (**5 h**, **7 days**, **4 x 7 days**) and,
+for the 4 x 7 days span, an output / cache-read selector.
+
+**Accounts.** An account is named by the label aiquota gives it, its plan and a short
+hash of its key (`Claude Code (team) #3d3c`); its e-mail and id are never sent to the
+browser, drawn or recorded (only a SHA-256 prefix of the id is kept).
 
 *Official usage* comes from `aiquota status -o json` (run from `PATH`, fixed arguments, no
 shell; aiquota already shares one reading between processes and serves stale data when
-rate-limited, so agentscope reads it **at most every 5 minutes**). aiquota keeps only
-its last reading, so agentscope **records the history**: append-only JSON lines in
-`<user config dir>/agentscope/quota.jsonl` (`--history-dir`), rotated to `quota.jsonl.1`
-past 4 MiB. A window the provider reports as not available is **listed, never drawn as
-0**. The 5 h and 7 day charts draw each window over its own span with its reset as a
-vertical marker; a line needs two recorded readings, and until then the page says
-*recording since <date>*.
+rate-limited, so agentscope reads it **at most every 5 minutes**), one reading per account
+aiquota reports. aiquota keeps only its last reading, so agentscope **records the
+history**: append-only JSON lines in `<user config dir>/agentscope/quota.jsonl`
+(`--history-dir`), one line per account and reading, rotated to `quota.jsonl.1` past 4 MiB.
+Each line carries the account key, label and plan. aiquota's JSON names an account only
+by a label (every Claude Code account is "Claude Code"), so the key of a single-account
+reading is the account **Claude Code is signed in to**, read from the `oauthAccount` of
+`~/.claude.json` just before and after the call; if it changed in between, or cannot be
+read, the reading is recorded with **no account**. Rows written before accounts were
+recorded have no account either: they are shown as **"unknown account"**, never
+assigned, and never counted in the capacity. A window the provider reports as not
+available is **listed, never drawn as 0**. A line needs two recorded readings; until
+then the page says *recording since <date>*.
 
-*Local consumption* is derived from the transcripts: tokens per model family
-(Opus, Sonnet, Haiku, Fable, stacked), **output and cache-read apart** (the two differ by
-three orders of magnitude, so they are two charts). One API message is split over
-several transcript entries that share a `message.id`; within a file the entries are
-**counted once** (the larger counts win). The transcripts are read **incrementally**:
-the scanner remembers each file's offset and keeps only per-10-minute sums, cached in
+*Local consumption* is derived from the transcripts: tokens per model family (Opus, Sonnet,
+Haiku, Fable, stacked), **output and cache-read apart** (they differ by three orders of
+magnitude, so they are two charts). One API message is split over several transcript
+entries that share a `message.id`; within a file the entries are **counted once** (the larger
+counts win). The transcripts are read **incrementally**: the scanner remembers each file's
+offset and keeps only per-10-minute sums per account, cached in
 `<user cache dir>/agentscope/usage.json`, so a restart reads what was appended and not
-gigabytes; a transcript untouched for 35 days is not opened.
+gigabytes (measured 2026-11-20, load 4: a cold scan of 12.4 GiB / 1470 transcripts takes
+26 s; a restart with the cache 46 ms); a transcript untouched for 35 days is not opened.
 
-**4 x 7 days** aligns four weekly windows on the **weekly reset instant aiquota
-reports** (not calendar weeks; the earlier resets are found by stepping back 7 days; if
-aiquota cannot be read the last recorded reset is used and the page says so). Chart A
-compares the weeks: one stacked bar per week, output or cache-read (selectable); chart
-B draws four lines of cumulative consumption over days 0 to 7 of each window on one
-axis, so this week can be read against the three before it; the final official weekly
-percentage of each week is shown where it was recorded and "not recorded" where it was
-not. The current week is marked as in progress.
+**How a call is attributed to an account.** The assistant entries of a transcript carry
+no account. Claude Code writes a `session-owner` entry (account id, organisation id,
+session id; no timestamp) when a session starts or resumes, and the scanner attributes
+every assistant entry to the **latest session-owner entry before it in the same file**.
+An entry before the first one, or in a file that has none (older Claude Code versions),
+is **unattributed**: it is drawn as its own grey layer in the aggregated charts, counted
+in the notes, and **never given to a guessed account**. Gaps: a session whose account
+changed without Claude Code writing a new session-owner entry is attributed to the
+account at its start or last resume; and the transcripts written before Claude Code
+recorded the owner are unattributed, which on the author's machine is most of the older
+tokens. `~/.claude.json` holds only the account signed in *now*, and the aiquota stamps
+carry no account id, so neither can date an account switch.
+
+**Aggregated view.** Each account's 5 h and weekly percentages side by side in a table
+with the account-weeks of capacity left, Σ(100 − weekly %)/100, each account's next
+weekly reset, and which account is active; accounts with a reading whose reset has
+passed, and the unknown account, are listed and not counted. The 5 h and 7 day charts draw
+one line per account with its own reset marker; the tokens are summed over accounts
+(plus the unattributed layer).
+
+**4 x 7 days.** For one account, four weekly windows aligned on **that account's weekly
+reset instant aiquota reports** (not calendar weeks; earlier resets are found by stepping
+back 7 days; if aiquota cannot be read the last recorded reset is used and the page says
+so): one stacked bar per week, output or cache-read (selectable), four lines of cumulative
+consumption over days 0 to 7 of each window on one axis, and the final official weekly
+percentage of each week where it was recorded ("not recorded" where it was not). The
+current week is marked in progress. In the aggregated view the accounts have different
+reset anchors, so it is aligned on **calendar days** (28 days of tokens per day) and each
+account's resets, one week apart, are its own marker series on the weekly-percentage chart.
 
 ### Look
 

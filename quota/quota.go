@@ -11,6 +11,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,16 +48,37 @@ type Window struct {
 	Available bool    `json:"a,omitempty"`
 }
 
-// Reading is every window at one instant (Unix seconds).
+// Reading is every window of one account at one instant (Unix seconds).
+//
+// Acct is the account's stable key (see AccountKey, LabelKey); "" is a reading
+// recorded before accounts were told apart, or taken when the account could not
+// be told: its account is unknown and is never guessed.
 type Reading struct {
 	At      int64    `json:"at"`
+	Acct    string   `json:"acct,omitempty"`
+	Label   string   `json:"lbl,omitempty"`
+	Plan    string   `json:"plan,omitempty"`
 	Windows []Window `json:"w"`
 }
+
+// AccountKey is the stable, short key of an account id: the first 8 hex digits
+// of its SHA-256. The id itself, and the e-mail, are never kept.
+func AccountKey(id string) string {
+	if id == "" {
+		return ""
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(id)))[:8]
+}
+
+// LabelKey is the key of an account known only by the label aiquota gave it.
+func LabelKey(label string) string { return "l" + AccountKey("label:" + label)[:7] }
 
 // statusJSON is the part of `aiquota status -o json` that is read.
 type statusJSON struct {
 	At      time.Time `json:"at"`
 	Windows []struct {
+		Account     string  `json:"account"`
+		Plan        string  `json:"plan"`
 		Label       string  `json:"label"`
 		UsedPercent float64 `json:"used_percent"`
 		ResetsAt    int64   `json:"resets_at_unix"`
@@ -64,32 +86,59 @@ type statusJSON struct {
 	} `json:"windows"`
 }
 
-// Parse decodes the output of `aiquota status -o json`. A window whose verdict
-// is "n/a" is Available false: it is listed, never drawn as 0.
-func Parse(b []byte) (Reading, error) {
+// Parse decodes the output of `aiquota status -o json`: one Reading per
+// account label, in order of appearance, their keys unset (see Tag). A window
+// whose verdict is "n/a" is Available false: it is listed, never drawn as 0.
+func Parse(b []byte) ([]Reading, error) {
 	var s statusJSON
 	if err := json.Unmarshal(b, &s); err != nil {
-		return Reading{}, fmt.Errorf("aiquota status: %w", err)
+		return nil, fmt.Errorf("aiquota status: %w", err)
 	}
 	if s.At.IsZero() {
-		return Reading{}, errors.New("aiquota status: no timestamp")
+		return nil, errors.New("aiquota status: no timestamp")
 	}
-	r := Reading{At: s.At.Unix()}
+	var rs []Reading
+	idx := map[string]int{}
+	n := 0
 	for _, w := range s.Windows {
-		if len(r.Windows) >= maxWindows {
+		if n >= maxWindows {
 			break
 		}
-		ok := w.Verdict != "n/a" && w.Verdict != ""
+		n++
+		i, ok := idx[w.Account]
+		if !ok {
+			i = len(rs)
+			idx[w.Account] = i
+			rs = append(rs, Reading{At: s.At.Unix(), Label: clip(w.Account, 64), Plan: clip(w.Plan, 32)})
+		}
+		ok = w.Verdict != "n/a" && w.Verdict != ""
 		win := Window{Label: clip(w.Label, 64), Available: ok}
 		if ok {
 			win.Percent, win.ResetsAt = clamp(w.UsedPercent), w.ResetsAt
 		}
-		r.Windows = append(r.Windows, win)
+		rs[i].Windows = append(rs[i].Windows, win)
 	}
-	if len(r.Windows) == 0 {
-		return Reading{}, errors.New("aiquota status: no windows")
+	if len(rs) == 0 {
+		return nil, errors.New("aiquota status: no windows")
 	}
-	return r, nil
+	return rs, nil
+}
+
+// Tag sets the accounts' keys. active is the key of the account Claude Code is
+// signed in to ("" when it could not be told, or changed during the reading):
+// with a single account in the output it is that one; with several, each is
+// known by its label alone, since nothing says which of them is the active one.
+func Tag(rs []Reading, active string) {
+	for i := range rs {
+		switch {
+		case len(rs) == 1 && active != "":
+			rs[i].Acct = active
+		case len(rs) > 1:
+			rs[i].Acct = LabelKey(rs[i].Label)
+		default:
+			rs[i].Acct = ""
+		}
+	}
 }
 
 func clamp(p float64) float64 {

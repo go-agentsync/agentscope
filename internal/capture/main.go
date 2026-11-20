@@ -83,6 +83,9 @@ func (d *cdp) call(ctx context.Context, sess, method string, params any) (json.R
 	}
 }
 
+// dragSpec is the -drag flag: "x1,y1,x2,y2", done after the clicks.
+var dragSpec string
+
 func run(ctx context.Context, chrome, url, out string, wait time.Duration, scroll, w, h int, click string, dark bool) error {
 	if in, err := insideGitTree(out); err != nil || in {
 		return fmt.Errorf("refusing to write a capture inside a git work tree (%s): %v", out, err)
@@ -178,6 +181,24 @@ func run(ctx context.Context, chrome, url, out string, wait time.Duration, scrol
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
+	if dragSpec != "" { // press at x1,y1, move to x2,y2, release: a drag of a divider
+		var x1, y1, x2, y2 int
+		if _, err := fmt.Sscanf(dragSpec, "%d,%d,%d,%d", &x1, &y1, &x2, &y2); err != nil {
+			return fmt.Errorf("-drag wants x1,y1,x2,y2: %v", err)
+		}
+		for _, ev := range []map[string]any{
+			{"type": "mouseMoved", "x": x1, "y": y1},
+			{"type": "mousePressed", "x": x1, "y": y1, "button": "left", "clickCount": 1},
+			{"type": "mouseMoved", "x": (x1 + x2) / 2, "y": y1, "button": "left"},
+			{"type": "mouseMoved", "x": x2, "y": y2, "button": "left"},
+			{"type": "mouseReleased", "x": x2, "y": y2, "button": "left", "clickCount": 1},
+		} {
+			if _, err := d.call(ctx, s, "Input.dispatchMouseEvent", ev); err != nil {
+				return err
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 	for i := 0; i < scroll; i++ {
 		// Wheel over the graph (left part of the page).
 		if _, err := d.call(ctx, s, "Input.dispatchMouseEvent", map[string]any{"type": "mouseWheel", "x": 300, "y": 300, "deltaX": 0, "deltaY": 120}); err != nil {
@@ -215,6 +236,7 @@ func main() {
 	wait := flag.Duration("wait", 6*time.Second, "how long the page gets before the capture")
 	scroll := flag.Int("scroll", 0, "wheel steps over the graph before the capture")
 	click := flag.String("click", "", "x,y of a click (e.g. a node) before the capture; x,y;x,y for several")
+	flag.StringVar(&dragSpec, "drag", "", "x1,y1,x2,y2: press, move and release (resizing the panel's divider) after the clicks")
 	dark := flag.Bool("dark", false, "emulate prefers-color-scheme: dark")
 	w := flag.Int("w", 1680, "window width")
 	h := flag.Int("h", 960, "window height")

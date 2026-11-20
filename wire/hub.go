@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ type Hub struct {
 	changed chan struct{} // closed and replaced on every publish
 	sum     []byte
 	sentAt  time.Time
+	rename  Renamer
 }
 
 // NewHub returns a Hub that collects every `every` and republishes an
@@ -107,6 +109,32 @@ func (h *Hub) Snapshot(ctx context.Context) (model.Snapshot, error) {
 	}
 	s, _, err := h.wait(ctx, 0)
 	return s, err
+}
+
+// Renamer is what writes an account's display name; *usage.Engine is one.
+type Renamer interface{ Rename(key, name string) error }
+
+// SetRenamer makes the hub serve Rename through r. Without one it refuses.
+func (h *Hub) SetRenamer(r Renamer) {
+	h.mu.Lock()
+	h.rename = r
+	h.mu.Unlock()
+}
+
+// Rename implements Scope: it writes the name and collects at once, so every
+// watching browser shows it without waiting for the next interval.
+func (h *Hub) Rename(_ context.Context, key, name string) error {
+	h.mu.Lock()
+	r := h.rename
+	h.mu.Unlock()
+	if r == nil {
+		return errors.New("wire: this server does not rename accounts")
+	}
+	if err := r.Rename(key, name); err != nil {
+		return err
+	}
+	h.Collect()
+	return nil
 }
 
 // Watch implements Scope.

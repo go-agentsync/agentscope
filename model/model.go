@@ -28,6 +28,9 @@ type Snapshot struct {
 	Stats     Stats     `json:"stats"`
 	// Usage is the Quota tab's data; nil until the first scan finished.
 	Usage *Usage `json:"usage,omitempty"`
+	// ContextWindow is the size, in tokens, at which Claude Code compacts a
+	// context: what a session's Context is measured against.
+	ContextWindow int64 `json:"contextWindow,omitempty"`
 }
 
 // Session is one Claude Code session, with its sub-agents.
@@ -51,6 +54,10 @@ type Session struct {
 	// seen); Models is every model seen in the observed window, newest first.
 	Model  string      `json:"model,omitempty"`
 	Models []ModelSeen `json:"models,omitempty"`
+	// Context is the tokens the last API call of the session carried in (input,
+	// cache read and cache creation): how full its context is now; 0 when no call
+	// was seen.
+	Context int64 `json:"context,omitempty"`
 }
 
 // ModelSeen is a model id and when it was last seen answering.
@@ -107,6 +114,8 @@ type Agent struct {
 	Depth        int         `json:"depth"`
 	LastActivity time.Time   `json:"lastActivity"`
 	Active       bool        `json:"active"`
+	// Context is the sub-agent's context size, as for a Session.
+	Context int64 `json:"context,omitempty"`
 }
 
 // RepoKind says how a lease resource was understood.

@@ -28,6 +28,7 @@ func serveCmd() *cobra.Command {
 		cacheDir string
 		history  string
 		interval time.Duration
+		showOrg  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -72,7 +73,11 @@ no Go toolchain.`,
 				return err
 			}
 			eng := usage.NewEngine(o.ClaudeDir, ucache, uconf, quotaRunner)
+			if showOrg {
+				eng.ShowOrg(o.ClaudeDir)
+			}
 			hub := wire.NewHub(usage.Source{Inner: collect.New(o), Eng: eng}, interval, 10*time.Second)
+			hub.SetRenamer(eng)
 			srv, err := serve.New(serve.Config{Addr: addr, Web: ui, Scope: hub})
 			if err != nil {
 				return err
@@ -88,6 +93,7 @@ no Go toolchain.`,
 	cmd.Flags().StringVar(&web, "web", "", "serve the UI from this directory instead of building it on first run")
 	cmd.Flags().StringVar(&cacheDir, "cache-dir", "", "where the built UI is kept (default <user cache dir>/agentscope)")
 	cmd.Flags().StringVar(&history, "history-dir", "", "where the official usage readings are recorded (default <user config dir>/agentscope)")
+	cmd.Flags().BoolVar(&showOrg, "show-org", false, "offer the organisation's name (from ~/.claude.json) as the suggested value of the Rename dialog; off, no organisation name is read or sent")
 	cmd.Flags().DurationVar(&interval, "interval", 2*time.Second, "how often the network is collected")
 	return cmd
 }

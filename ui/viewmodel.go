@@ -8,6 +8,7 @@ package ui
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-agentsync/agentscope/model"
 	"github.com/go-widgets/mvvm"
@@ -32,6 +33,18 @@ type Row struct {
 	Last  string
 	Agent string // sub-agent count
 	Model string // short family name ("Opus 5.5"), or "?" when unknown or unseen
+	// CtxText is "212k / 300k", Ratio the context over the compaction window, and
+	// Band its pressure band (model.PressureBand): what the Context column's
+	// gauge draws.
+	CtxText string
+	Ratio   float64
+	Band    int
+	// Repos is every repository the session holds or sits in, one per line: what
+	// the Repository filter matches (a session can hold several). Active and Age
+	// are what the State and Last-activity filters read.
+	Repos  string
+	Active bool
+	Age    time.Duration
 }
 
 // Cell widths, in characters, that fit the table's columns: the Table paints
@@ -50,7 +63,7 @@ func modelShort(id string) string {
 
 // Cells is the row as the table shows it.
 func (r Row) Cells() []string {
-	return []string{r.State, r.ID, r.Model, model.Truncate(r.Repo, repoChars), model.Truncate(r.Task, taskChars), r.Last, r.Agent}
+	return []string{r.State, r.ID, r.CtxText, r.Model, model.Truncate(r.Repo, repoChars), model.Truncate(r.Task, taskChars), r.Last, r.Agent}
 }
 
 // Text is the row's whole text, which is what the query is matched against.
@@ -112,6 +125,25 @@ type ViewModel struct {
 	selKey         string // the selected account's key, or allKey
 	syncing        bool
 
+	// Filters narrow the sessions table (AND, with the query).
+	Filters *Filters
+	// Contexts are the Details pane's gauges: the selected session and each of its
+	// sub-agents, or the selected sub-agent; DetailChars is the width, in
+	// characters, the Details pane wraps its lines at (the Scene sets it from the
+	// panel's width, so nothing is cut off at the right edge).
+	Contexts    *mvvm.ObservableList[CtxRow]
+	DetailChars *mvvm.Observable[int]
+	// ViewW is the surface's width in logical pixels (set by the Scene), PanelW the
+	// side panel's, kept between PanelMinW and PanelMaxPercent of it; ColW the
+	// sessions table's column widths. All three are persisted per viewer (SetStore).
+	ViewW, PanelW *mvvm.Observable[int]
+	ColW          *mvvm.ObservableList[int]
+
+	// The Rename action of the accounts table: CapSel is the selected row, and
+	// Rename the dialog's state (see rename.go).
+	CapSel *mvvm.Observable[int]
+	Rename *RenameState
+
 	snap     model.Snapshot
 	have     bool
 	allRows  []Row
@@ -144,7 +176,29 @@ func NewViewModel() *ViewModel {
 		selKey:         allKey,
 		AccountOptions: mvvm.NewObservableList(AllAccounts),
 		Capacity:       mvvm.NewObservableList[CapRow](),
+
+		Contexts:    mvvm.NewObservableList[CtxRow](),
+		DetailChars: mvvm.NewObservable(detailWidth),
+		ViewW:       mvvm.NewObservable(DefaultW),
+		PanelW:      mvvm.NewObservable(PanelDefaultW),
+		ColW:        mvvm.NewObservableList(ColDefault...),
+		CapSel:      mvvm.NewObservable(-1),
 	}
+	vm.Filters = newFilters(vm.refreshRows)
+	vm.Rename = newRenameState(vm)
+	// A width the owner (or a store) sets is held to the bounds at once. A surface
+	// that gets narrower does NOT rewrite it: the panel is only shown within the
+	// bounds (EffectivePanelW), so widening the window brings the chosen width back.
+	vm.PanelW.SubscribeChanged(func() {
+		if w := ClampPanelW(vm.PanelW.Get(), vm.ViewW.Get()); w != vm.PanelW.Get() {
+			vm.PanelW.Set(w)
+		}
+	})
+	vm.DetailChars.SubscribeChanged(func() {
+		if vm.have {
+			vm.refreshDetail()
+		}
+	})
 	for i := range vm.ModelChips {
 		vm.ModelChips[i] = mvvm.NewObservable("")
 	}
@@ -187,6 +241,9 @@ func (vm *ViewModel) onUsage() {
 		vm.selKey = allKey
 	}
 	setList(vm.Capacity, rows)
+	if vm.CapSel.Get() >= len(rows) {
+		vm.CapSel.Set(-1)
+	}
 	vm.syncing = true
 	vm.Account.Set(idx)
 	vm.syncing = false
@@ -219,10 +276,10 @@ func (vm *ViewModel) Apply(s model.Snapshot) {
 	for _, se := range s.Sessions {
 		vm.allRows = append(vm.allRows, vm.row(s, se))
 	}
+	vm.Filters.sync(vm.allRows)
 	vm.refreshRows()
 	vm.refreshDetail()
 
-	c := s.Counts()
 	counts := s.ModelCounts()
 	for i, chip := range vm.ModelChips {
 		text := ""
@@ -231,9 +288,7 @@ func (vm *ViewModel) Apply(s model.Snapshot) {
 		}
 		chip.Set(text)
 	}
-	vm.Status.Set(strconv.Itoa(c.Sessions) + " sessions (" + strconv.Itoa(c.Active) + " active in " + s.ActiveFor + ") | " +
-		strconv.Itoa(c.Agents) + " sub-agents | " + strconv.Itoa(c.Repos) + " repos (" + strconv.Itoa(c.Held) + " held) | " +
-		strconv.Itoa(c.Tells) + " tells | " + strconv.Itoa(c.Anomalies) + " anomalies | " + s.At.Format("15:04:05") + vm.notDrawn)
+	vm.refreshStatus()
 }
 
 // rebuildGraph maps the last snapshot onto the graph, with the orgs that are
@@ -294,7 +349,45 @@ func (vm *ViewModel) row(s model.Snapshot, se model.Session) Row {
 	if repo == "" {
 		repo = se.CwdRepo
 	}
-	return Row{ID: se.Short, State: state, Repo: repo, Task: s.Task(se), Last: ago(s.At, se.LastActivity), Agent: strconv.Itoa(len(se.Agents)), Model: modelShort(se.Model)}
+	// Every repository of the session, for the filter: the ones it holds and the
+	// one it sits in.
+	all := append([]string(nil), repos...)
+	if se.CwdRepo != "" {
+		all = append(all, se.CwdRepo)
+	}
+	age := neverActive
+	if !se.LastActivity.IsZero() {
+		age = s.At.Sub(se.LastActivity)
+	}
+	c := ctxOf("", se.Context, windowOf(s))
+	return Row{ID: se.Short, State: state, Repo: repo, Task: s.Task(se), Last: ago(s.At, se.LastActivity), Agent: strconv.Itoa(len(se.Agents)), Model: modelShort(se.Model),
+		CtxText: c.Text, Ratio: c.Ratio, Band: c.Band, Repos: strings.Join(uniq(all), "\n"), Active: state == "ACTIVE", Age: age}
+}
+
+// neverActive is the age of a session with no recorded activity: older than any
+// recency filter.
+const neverActive = 1000 * 24 * time.Hour
+
+// windowOf is the snapshot's compaction window, or the default when the
+// collector sent none.
+func windowOf(s model.Snapshot) int64 {
+	if s.ContextWindow > 0 {
+		return s.ContextWindow
+	}
+	return model.DefaultCompactWindow
+}
+
+// uniq drops repeats, keeping the order.
+func uniq(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // refreshRows applies the query to the full row set.
@@ -302,12 +395,26 @@ func (vm *ViewModel) refreshRows() {
 	q := strings.ToLower(strings.TrimSpace(vm.Query.Get()))
 	var rows []Row
 	for _, r := range vm.allRows {
-		if q == "" || strings.Contains(strings.ToLower(r.Text()), q) {
+		if (q == "" || strings.Contains(strings.ToLower(r.Text()), q)) && vm.Filters.keep(r) {
 			rows = append(rows, r)
 		}
 	}
 	setList(vm.Rows, rows)
 	vm.syncTableSel()
+	vm.refreshStatus()
+}
+
+// refreshStatus writes the one-line summary: how many sessions the filters leave
+// out of how many there are, then the rest of the counts.
+func (vm *ViewModel) refreshStatus() {
+	if !vm.have {
+		return
+	}
+	s := vm.snap
+	c := s.Counts()
+	vm.Status.Set(strconv.Itoa(vm.Rows.Len()) + " of " + strconv.Itoa(len(vm.allRows)) + " sessions shown (" + strconv.Itoa(c.Active) + " active in " + s.ActiveFor + ") | " +
+		strconv.Itoa(c.Agents) + " sub-agents | " + strconv.Itoa(c.Repos) + " repos (" + strconv.Itoa(c.Held) + " held) | " +
+		strconv.Itoa(c.Tells) + " tells | " + strconv.Itoa(c.Anomalies) + " anomalies | " + s.At.Format("15:04:05") + vm.notDrawn)
 }
 
 // onQuery narrows the table and dims the graph.
@@ -333,9 +440,9 @@ func (vm *ViewModel) syncTableSel() {
 // onGraphSelected follows a click in the graph: the edges (focus), the table
 // and the detail pane.
 func (vm *ViewModel) onGraphSelected() {
-	if vm.Graph.Selected.Get() != "" {
-		vm.PanelOpen.Set(true) // a selection is read in the panel
-	}
+	// A selection does not open the panel: the panel is docked, so opening it
+	// would shrink the graph and move the very node that was just clicked. The
+	// details of the selection are in the panel when the owner opens it (t).
 	vm.refreshEdges()
 	vm.syncTableSel()
 	vm.refreshDetail()

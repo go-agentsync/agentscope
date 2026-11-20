@@ -91,12 +91,44 @@ to the device pixel ratio, so a 2x screen is drawn at 2x and not stretched. The
 graph's clusters flow into as many columns as the width holds; a resize may lay the
 graph out again, an edge update never does.
 
-The **sessions table and the details are a side panel** over the graph (a toolkit
-`Overlay` layer, 420 logical pixels, right-aligned under the tab strip), **closed by
-default**. The **Sessions (t)** button and the key `t` (when the search box is not
-focused) toggle it, and selecting a node opens it on the details. Its state, like
-every other, is ViewModel state (`PanelOpen`, `TogglePanel`); a click on the open panel
-never reaches the graph beneath it. The panel is not shown on the Quota tab.
+The **sessions table and the details are a side panel docked beside the graph** (a
+toolkit `Splitter`, 420 logical pixels by default), **closed by default**. Opening it
+shrinks the graph to the width that is left (the graph lays itself out again, with
+fewer cluster columns), closing it gives the width back; the panel never covers the
+graph. The **Sessions (t)** button, the key `t` (when the search box is not focused)
+and the **close button (xmark)** in the panel's top bar run the same ViewModel command
+(`TogglePanel`); **Escape** closes it while the focus is in the panel. Selecting a
+node does not open it (it would move the node you just clicked); its details are there
+when you open the panel. The panel is not shown on the Quota tab.
+
+**Resizing.** Drag the panel's left edge (the cursor becomes a resize cursor): the
+graph shrinks as the panel grows. The panel stays between **320 px and 70 %** of the
+width and the graph keeps at least 320 px. The width and the **column widths** of the
+sessions table (drag a header separator; each column has its own minimum) are
+ViewModel state, kept **per viewer in the browser's `localStorage`** (every access in
+try/catch; a store that cannot be read leaves the defaults, and what it holds is
+clamped).
+
+**Filters** above the sessions table, all ViewModel state and combined with AND (and
+with the search text): **state** (All / Active / Idle), **last activity** (any, < 10
+min, < 1 h, < 6 h, < 24 h), **repository** (a session matches any repository it holds
+or sits in), **model** (check boxes of the most used models present, "?" for unknown;
+checked ones are OR-ed) and **Clear filters**. The status line says "N of M sessions
+shown". The filters narrow the table only: the graph's dimming is a text match (the
+search box), which a set of filters cannot express.
+
+### Context pressure
+
+The **Context** column of the sessions table, and the gauges at the top of the Details
+pane (the selected session and each of its sub-agents), show how full a context is: the
+`input_tokens + cache_read_input_tokens + cache_creation_input_tokens` of the **last API
+call** of the transcript (entries of one `message.id` are one call; a synthetic entry
+or one with no usage changes nothing), read incrementally and bounded like the rest,
+against the compaction window: `autoCompactWindow` of `~/.claude/settings.json`, else
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW`, else 1,000,000. The gauge is the toolkit's
+`Table.CellBar`, with the number beside it ("212k / 300k"), in five bands: below 40 %
+dark green, 40-60 % light green, 60-75 % yellow, 75-90 % orange, 90 % and over red.
+Graph nodes carry no tint: `GraphView` has no per-node colour hook.
 
 ### Quota
 
@@ -106,7 +138,22 @@ for the 4 x 7 days span, an output / cache-read selector.
 
 **Accounts.** An account is named by the label aiquota gives it, its plan and a short
 hash of its key (`Claude Code (team) #3d3c`); its e-mail and id are never sent to the
-browser, drawn or recorded (only a SHA-256 prefix of the id is kept).
+browser, drawn or recorded (only a SHA-256 prefix of the id is kept). The accounts
+table has a **Plan** column (aiquota's reading; every recorded sample keeps the plan it
+had) and a **Rename** button (select a row first): the display name is written by the
+`serve` process, atomically with mode 0600, to `<user config dir>/agentscope/accounts.toml`,
+
+```toml
+"7567" = "Labo (team)"
+```
+
+(the key is the hash shown after `#`; you may edit the file by hand; a missing or
+corrupt file means no alias at all). The alias replaces the label everywhere: the
+selector, the table, the chart legends and the reset markers. With **`serve --show-org`**
+(off by default) the Rename dialog starts with the organisation's name from
+`~/.claude.json` as a *suggestion*; nothing is saved until you confirm, and without the
+flag no organisation name is read, sent, drawn or logged. The renaming goes over the
+same loopback WebSocket as the stream (same-origin only), as the one write the UI makes.
 
 *Official usage* comes from `aiquota status -o json` (run from `PATH`, fixed arguments, no
 shell; aiquota already shares one reading between processes and serves stale data when
@@ -139,13 +186,39 @@ no account. Claude Code writes a `session-owner` entry (account id, organisation
 session id; no timestamp) when a session starts or resumes, and the scanner attributes
 every assistant entry to the **latest session-owner entry before it in the same file**.
 An entry before the first one, or in a file that has none (older Claude Code versions),
-is **unattributed**: it is drawn as its own grey layer in the aggregated charts, counted
-in the notes, and **never given to a guessed account**. Gaps: a session whose account
-changed without Claude Code writing a new session-owner entry is attributed to the
-account at its start or last resume; and the transcripts written before Claude Code
-recorded the owner are unattributed, which on the author's machine is most of the older
-tokens. `~/.claude.json` holds only the account signed in *now*, and the aiquota stamps
-carry no account id, so neither can date an account switch.
+**falls back to the stamps timeline** (below): the latest stamp at or before the call.
+With no stamp that old either it is **unattributed**: drawn as its own grey layer in the
+aggregated charts, counted in the notes, and **never given to a guessed account**. Order:
+the session-owner entry, else the stamps, else unattributed. Gaps: a session whose
+account changed without Claude Code writing a new session-owner entry is attributed to
+the account at its start or last resume; and the transcripts written before Claude Code
+recorded the owner, and before the hook below was installed, are unattributed.
+`~/.claude.json` holds only the account signed in *now*, and the aiquota stamps carry no
+account id, so neither can date an account switch: that is what the hook is for.
+
+**`agentscope stamp`** is a hook verb for Claude Code's `SessionStart` and
+`UserPromptSubmit` events. It reads the hook payload on stdin and the signed-in account
+from `~/.claude.json`, and appends `{at, session_id, account_hash, label, plan}` to
+`<user config dir>/agentscope/accounts.jsonl` **only when the account changed** since the
+last line (locked, so ~25 sessions can share the file; rotated to `accounts.jsonl.1` past
+256 KiB). It prints nothing on stdout (a hook's stdout reaches the model), makes no
+network call, and exits 0 whatever happens (`--verbose` says why on stderr). Wire it in
+`~/.claude/settings.json` yourself (agentscope never edits it):
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "agentscope stamp" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "agentscope stamp" } ] }
+    ]
+  }
+}
+```
+
+(use the full path of the binary if `agentscope` is not on the hook's `PATH`).
 
 **Aggregated view.** Each account's 5 h and weekly percentages side by side in a table
 with the account-weeks of capacity left, Σ(100 − weekly %)/100, each account's next
@@ -272,7 +345,8 @@ are unix; elsewhere the path is trusted.)
 `--active` (a session is **active** when its transcript was written within this;
 default 10m), `--horizon` (default 12h), `--tell-window` (24h) and `--max-agents`.
 `serve` takes `--addr` (default `127.0.0.1:8765`), `--interval` (2s), `--web DIR`
-(serve a directory instead of building the UI) and `--cache-dir` (where builds go).
+(serve a directory instead of building the UI), `--cache-dir` (where builds go) and
+`--show-org` (see Accounts; off by default).
 `snapshot --stats --warm N` prints the time and allocation counts of one cold and
 N incremental collections.
 

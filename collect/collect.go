@@ -194,6 +194,7 @@ func (c *Collector) Snapshot() model.Snapshot {
 		Version: model.Version, At: now,
 		ActiveFor: c.opt.Active.String(), Horizon: c.opt.Horizon.String(),
 	}
+	snap.ContextWindow = CompactWindow(c.opt.ClaudeDir, osGetenv)
 	st := &snap.Stats
 	anom := map[string]model.Anomaly{}
 	addAnom := func(kind, subject, detail string) {
@@ -306,6 +307,7 @@ func (c *Collector) Snapshot() model.Snapshot {
 			}
 			c.readTranscript(f, ts, c.opt.TailBytes, st, addAnom)
 			se.Model, se.Models = modelsOf(ts, horizon)
+			se.Context = ts.ctx
 			se.Slug, se.Cwd, se.Branch, se.PR, se.Sent = ts.slug, ts.cwd, ts.branch, ts.pr, ts.sent
 			se.Title = ts.custom
 			if se.Title == "" {
@@ -504,6 +506,7 @@ func (c *Collector) readAgents(projDir, id string, now time.Time, st *model.Stat
 		}
 		c.readTranscript(transFile{path: p, mod: info.ModTime(), size: info.Size()}, ts, agentTailBytes, st, addAnom)
 		out[i].Model, out[i].Models = modelsOf(ts, horizon)
+		out[i].Context = ts.ctx
 	}
 	return out
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -38,6 +39,7 @@ type tstate struct {
 	sent    int
 	sentTo  map[string]int
 	models  []modelSeen // newest first
+	ctx     int64       // tokens the last API call carried in
 	skipped int
 	bad     int
 }
@@ -61,7 +63,25 @@ type rawLine struct {
 	// is no field for its content.
 	Message struct {
 		Model string `json:"model"`
+		// Usage is the token counts of the API call, numbers only.
+		Usage struct {
+			Input       int64 `json:"input_tokens"`
+			CacheRead   int64 `json:"cache_read_input_tokens"`
+			CacheCreate int64 `json:"cache_creation_input_tokens"`
+		} `json:"usage"`
 	} `json:"message"`
+}
+
+// maxContext bounds what one call may claim to have carried, so a hostile line
+// cannot overflow a sum or paint a bar of nonsense.
+const maxContext = 1 << 40
+
+// contextOf is the tokens an API call carried in: its input, its cache reads and
+// its cache creation. Each is bounded before it is summed.
+func (r *rawLine) contextOf() int64 {
+	u := r.Message.Usage
+	b := func(v int64) int64 { return min(max(v, 0), maxContext) }
+	return b(u.Input) + b(u.CacheRead) + b(u.CacheCreate)
 }
 
 // rawTools is read only for assistant lines that mention SendMessage, and only
@@ -140,6 +160,14 @@ func parseLine(line []byte, st *tstate) bool {
 			at = t
 		}
 		st.noteModel(clip(r.Message.Model, 80), at)
+	}
+	// The context is that of the LAST call: entries of one API message share its
+	// counts, so the latest entry says it. A synthetic entry (an error, an
+	// interruption) carries no call, and a call with no usage says nothing.
+	if r.Type == "assistant" && !strings.HasPrefix(r.Message.Model, "<") {
+		if n := r.contextOf(); n > 0 {
+			st.ctx = n
+		}
 	}
 	return true
 }

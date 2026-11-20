@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-agentsync/agentscope/accounts"
 	"github.com/go-agentsync/agentscope/model"
 	"github.com/go-agentsync/agentscope/quota"
 )
@@ -36,6 +37,14 @@ type Input struct {
 	QuotaErr string
 	// Active is the key of the account Claude Code is signed in to, "" unknown.
 	Active string
+	// Alias is the display name of an account by key ("" for none); nil is none.
+	Alias func(key string) string
+	// Stamps is the `stamp` hook's timeline: an account known only by its tokens
+	// takes its label and plan from its latest stamp.
+	Stamps accounts.Timeline
+	// Suggest is the organisation's name of the active account, "" unless the
+	// server runs with --show-org.
+	Suggest string
 }
 
 // Build assembles the Quota tab's data: one view per account, the sum, and the
@@ -86,7 +95,23 @@ func Build(in Input, sc *Scanner) *model.Usage {
 		u.Accounts = append(u.Accounts, buildAccount(n, k, byAcct[k], live[k] != 0 && live[k] == lastAt(byAcct[k]) && in.QuotaErr == "", sc))
 	}
 	for i := range u.Accounts {
-		u.Accounts[i].Active = in.Active != "" && u.Accounts[i].Key == in.Active
+		a := &u.Accounts[i]
+		a.Active = in.Active != "" && a.Key == in.Active
+		if in.Alias != nil && a.Key != "" {
+			a.Alias = in.Alias(a.Key)
+		}
+		if st, ok := in.Stamps.Latest(a.Key); ok && a.Key != "" {
+			// An account no aiquota reading names is known by what the hook saw.
+			if a.Label == "account" && st.Label != "" {
+				a.Label = st.Label
+			}
+			if a.Plan == "" {
+				a.Plan = st.Plan
+			}
+		}
+		if a.Active && in.Suggest != "" {
+			a.Suggest = in.Suggest
+		}
 	}
 
 	// The sum: the last 5 hours, the last 7 days and 28 calendar days.
@@ -103,6 +128,13 @@ func Build(in Input, sc *Scanner) *model.Usage {
 	}
 
 	u.Capacity = capacity(n, u.Accounts)
+	for i := range u.Capacity.Items { // the alias and the plan follow the account into the table
+		for _, a := range u.Accounts {
+			if a.Key == u.Capacity.Items[i].Key {
+				u.Capacity.Items[i].Alias, u.Capacity.Items[i].Plan = a.Alias, a.Plan
+			}
+		}
+	}
 	return u
 }
 
@@ -305,11 +337,15 @@ func capacity(n int64, accts []model.AccountUsage) model.Capacity {
 // ScanEvery, reads aiquota at most every quota.MinInterval, and records each
 // reading with the account it belongs to.
 type Engine struct {
-	scan   *Scanner
-	store  *quota.Store
-	run    quota.Runner
-	active func() string
-	now    func() time.Time
+	scan    *Scanner
+	store   *quota.Store
+	run     quota.Runner
+	active  func() string
+	now     func() time.Time
+	stamps  *accounts.Stamps
+	aliases *accounts.Aliases
+	// org reads the organisation's name; nil unless --show-org.
+	org func() string
 
 	mu       sync.Mutex
 	view     *model.Usage
@@ -331,7 +367,56 @@ func NewEngine(claudeDir, cacheDir, configDir string, run quota.Runner) *Engine 
 		run:    run,
 		active: func() string { return ActiveKey(filepath.Join(filepath.Dir(claudeDir), ".claude.json")) },
 		now:    time.Now,
+
+		stamps:  accounts.NewStamps(configDir),
+		aliases: accounts.NewAliases(configDir),
 	}
+}
+
+// ShowOrg makes the engine offer the organisation's name (from the .claude.json
+// next to claudeDir) as a suggested display name of the active account: it is
+// off by default, and while it is off no organisation name is read at all.
+func (e *Engine) ShowOrg(claudeDir string) {
+	path := filepath.Join(filepath.Dir(claudeDir), ".claude.json")
+	e.org = func() string {
+		id, _ := accounts.ReadIdentity(path, true)
+		return id.Org
+	}
+}
+
+// Rename gives the account with the key a display name, or removes it when name
+// is empty, and rebuilds the view so the next snapshot carries it. It is what
+// the UI's Rename action calls; the file is written here, by the serve process.
+func (e *Engine) Rename(key, name string) error {
+	if err := e.aliases.Set(key, name); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.view != nil { // show it now, not at the next minute's pass
+		for i := range e.view.Accounts {
+			if a := &e.view.Accounts[i]; a.Key != "" {
+				a.Alias = e.aliases.Name(a.Key)
+			}
+		}
+		for i := range e.view.Capacity.Items {
+			if it := &e.view.Capacity.Items[i]; it.Key != "" {
+				it.Alias = e.aliases.Name(it.Key)
+			}
+		}
+	}
+	return nil
+}
+
+// input is what Build needs besides the transcripts, at now. The caller holds
+// e.mu.
+func (e *Engine) input(now time.Time) Input {
+	in := Input{Now: now, Live: e.live, QuotaErr: e.quotaErr, Active: e.active(), Alias: e.aliases.Name, Stamps: e.stamps.Load()}
+	in.Hist, _ = e.store.Load()
+	if e.org != nil {
+		in.Suggest = e.org()
+	}
+	return in
 }
 
 // ActiveKey is the key of the account Claude Code is signed in to, from the
@@ -385,10 +470,14 @@ func (e *Engine) Step(ctx context.Context, now time.Time) {
 		}
 		e.mu.Unlock()
 	}
+	e.aliases.Reload() // the owner may have edited the file by hand
+	e.scan.SetStamps(e.stamps.Load())
 	e.scan.Refresh(now)
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.view = Build(Input{Now: now, Live: e.live, Hist: hist, QuotaErr: e.quotaErr, Active: e.active()}, e.scan)
+	in := e.input(now)
+	in.Hist = hist
+	e.view = Build(in, e.scan)
 }
 
 // Run steps now and then every ScanEvery until ctx ends.

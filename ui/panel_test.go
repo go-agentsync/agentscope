@@ -179,12 +179,12 @@ func TestQuotaTabSelectorsDriveTheViewModel(t *testing.T) {
 	vm.Apply(withUsage(snap()))
 	vm.Tab.Set(TabQuota)
 	pixels(s)
-	if len(s.targets()) < 6 {
+	if len(s.targets()) < 8 {
 		t.Fatal("the span selectors take clicks on the Quota tab")
 	}
 	click := func(r *toolkit.RadioButton) { x, y := center(r.Bounds()); s.HandleClick(x, y) }
 	click(s.spanRadios[SpanWeeks])
-	if vm.Span.Get() != SpanWeeks || s.quota.Visible().Get() != "weeks" {
+	if vm.Span.Get() != SpanWeeks || s.quota.Visible().Get() != "allweeks" {
 		t.Fatalf("span %d, layout %q", vm.Span.Get(), s.quota.Visible().Get())
 	}
 	click(s.kindRadios[KindCacheRead])
@@ -192,7 +192,7 @@ func TestQuotaTabSelectorsDriveTheViewModel(t *testing.T) {
 		t.Fatal("the kind radio did not drive the view model")
 	}
 	click(s.spanRadios[SpanShort])
-	if vm.Span.Get() != SpanShort || s.quota.Visible().Get() != "range" || len(s.targets()) != 4+3 {
+	if vm.Span.Get() != SpanShort || s.quota.Visible().Get() != "allrange" || len(s.targets()) != 4+1+3 {
 		t.Fatal("the 5 h span uses the range layout and has no kind selector")
 	}
 	buf := pixels(s)

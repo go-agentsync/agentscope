@@ -102,6 +102,15 @@ type ViewModel struct {
 	// QuotaNotes is the line under the Quota charts: what is not available, what
 	// is not recorded, where the reset came from.
 	QuotaNotes *mvvm.Observable[string]
+	// Account is the account selector's choice: 0 is AllAccounts, i is the i-th
+	// account of the usage. AccountOptions are its options and Capacity the
+	// capacity table's rows, both rebuilt when the usage changes; the selection
+	// follows its account (by key) across a rebuild.
+	Account        *mvvm.Observable[int]
+	AccountOptions *mvvm.ObservableList[string]
+	Capacity       *mvvm.ObservableList[CapRow]
+	selKey         string // the selected account's key, or allKey
+	syncing        bool
 
 	snap     model.Snapshot
 	have     bool
@@ -125,18 +134,24 @@ func NewViewModel() *ViewModel {
 		Dark:        mvvm.NewObservable(false),
 		Expanded:    mvvm.NewObservableList[string](),
 
-		Tab:        mvvm.NewObservable(TabGraph),
-		PanelOpen:  mvvm.NewObservable(false),
-		Span:       mvvm.NewObservable(SpanWeek),
-		Kind:       mvvm.NewObservable(KindOutput),
-		Usage:      mvvm.NewObservable[*model.Usage](nil),
-		QuotaNotes: mvvm.NewObservable(""),
+		Tab:            mvvm.NewObservable(TabGraph),
+		PanelOpen:      mvvm.NewObservable(false),
+		Span:           mvvm.NewObservable(SpanWeek),
+		Kind:           mvvm.NewObservable(KindOutput),
+		Usage:          mvvm.NewObservable[*model.Usage](nil),
+		QuotaNotes:     mvvm.NewObservable(""),
+		Account:        mvvm.NewObservable(0),
+		selKey:         allKey,
+		AccountOptions: mvvm.NewObservableList(AllAccounts),
+		Capacity:       mvvm.NewObservableList[CapRow](),
 	}
 	for i := range vm.ModelChips {
 		vm.ModelChips[i] = mvvm.NewObservable("")
 	}
 	vm.TogglePanel = mvvm.NewCommand(func() { vm.PanelOpen.Set(!vm.PanelOpen.Get()) }, nil)
 	vm.Query.SubscribeChanged(vm.onQuery)
+	vm.Usage.SubscribeChanged(vm.onUsage)
+	vm.Account.SubscribeChanged(vm.onAccount)
 	vm.ShowExpired.SubscribeChanged(vm.refreshEdges)
 	vm.Expanded.SubscribeChanged(func() {
 		if vm.have {
@@ -147,6 +162,47 @@ func NewViewModel() *ViewModel {
 	vm.Graph.Selected.SubscribeChanged(vm.onGraphSelected)
 	vm.TableSel.SubscribeChanged(vm.onTableSelected)
 	return vm
+}
+
+// allKey is the selected key when the selector is on AllAccounts (no account's
+// key is empty-with-NUL).
+const allKey = "\x00all"
+
+// onUsage rebuilds the selector's options and the capacity rows, and keeps the
+// selection on the same account: by key, never by position.
+func (vm *ViewModel) onUsage() {
+	u := vm.Usage.Get()
+	setList(vm.AccountOptions, AccountOptions(u))
+	var rows []CapRow
+	idx := 0
+	if u != nil {
+		rows = capacityRows(u.Capacity)
+		for i, a := range u.Accounts {
+			if a.Key == vm.selKey {
+				idx = i + 1
+			}
+		}
+	}
+	if idx == 0 {
+		vm.selKey = allKey
+	}
+	setList(vm.Capacity, rows)
+	vm.syncing = true
+	vm.Account.Set(idx)
+	vm.syncing = false
+}
+
+// onAccount follows the selector.
+func (vm *ViewModel) onAccount() {
+	if vm.syncing {
+		return
+	}
+	u, i := vm.Usage.Get(), vm.Account.Get()
+	if u == nil || i <= 0 || i > len(u.Accounts) {
+		vm.selKey = allKey
+		return
+	}
+	vm.selKey = u.Accounts[i-1].Key
 }
 
 // Snapshot is the last snapshot applied.

@@ -2,7 +2,11 @@ package usage
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -12,67 +16,176 @@ import (
 
 const (
 	week       = 7 * 24 * 3600
+	day        = 24 * 3600
 	shortSpan  = 5 * 3600
 	cumStep    = 6 * 3600 // step of the cumulative lines
 	weeksShown = 4
+	daysShown  = 28
 	hourSec    = 3600
 )
 
-// Build assembles the Quota tab's data at now. latest is the newest official
-// reading (live, or the last recorded one when quotaErr says aiquota could not
-// be read); hist is every recorded reading, oldest first.
-func Build(now time.Time, latest quota.Reading, haveLatest bool, quotaErr string, hist []quota.Reading, sc *Scanner) *model.Usage {
-	n := now.Unix()
-	u := &model.Usage{At: n, Families: Families, QuotaErr: quotaErr}
-	if len(hist) > 0 {
-		u.RecordingSince = hist[0].At
+// Input is everything Build needs besides the transcripts.
+type Input struct {
+	Now time.Time
+	// Live is the last successful aiquota reading, one per account, tagged; empty
+	// when aiquota has not been read (or could not be).
+	Live []quota.Reading
+	// Hist is every recorded reading (live ones included), oldest first.
+	Hist []quota.Reading
+	// QuotaErr is why aiquota could not be read.
+	QuotaErr string
+	// Active is the key of the account Claude Code is signed in to, "" unknown.
+	Active string
+}
+
+// Build assembles the Quota tab's data: one view per account, the sum, and the
+// capacity left.
+func Build(in Input, sc *Scanner) *model.Usage {
+	n := in.Now.Unix()
+	u := &model.Usage{At: n, Families: Families, Active: in.Active, QuotaErr: in.QuotaErr}
+
+	// Every reading, once: a live one is also in the history once it is recorded.
+	type rk struct {
+		acct string
+		at   int64
+	}
+	seen := map[rk]bool{}
+	byAcct := map[string][]quota.Reading{}
+	live := map[string]int64{}
+	for _, r := range in.Live {
+		live[r.Acct] = r.At
+	}
+	for _, r := range append(append([]quota.Reading(nil), in.Hist...), in.Live...) {
+		if k := (rk{r.Acct, r.At}); !seen[k] {
+			seen[k] = true
+			byAcct[r.Acct] = append(byAcct[r.Acct], r)
+		}
+	}
+	keys := map[string]bool{}
+	for k, rs := range byAcct {
+		sort.SliceStable(rs, func(i, j int) bool { return rs[i].At < rs[j].At })
+		keys[k] = true
+	}
+	tokenKeys, _ := sc.Accounts()
+	for _, k := range tokenKeys {
+		keys[k] = true
+	}
+	var order []string
+	for k := range keys {
+		order = append(order, k)
+	}
+	// Known accounts by key, the unknown one ("") last.
+	sort.Slice(order, func(i, j int) bool {
+		if (order[i] == "") != (order[j] == "") {
+			return order[j] == ""
+		}
+		return order[i] < order[j]
+	})
+
+	for _, k := range order {
+		u.Accounts = append(u.Accounts, buildAccount(n, k, byAcct[k], live[k] != 0 && live[k] == lastAt(byAcct[k]) && in.QuotaErr == "", sc))
+	}
+	for i := range u.Accounts {
+		u.Accounts[i].Active = in.Active != "" && u.Accounts[i].Key == in.Active
 	}
 
-	// The weekly reset the weeks are aligned on, and where it came from.
-	if haveLatest {
+	// The sum: the last 5 hours, the last 7 days and 28 calendar days.
+	end := n - n%BucketSec + BucketSec
+	u.All.Layers = append(append([]string(nil), Families...), model.UnattributedLayer)
+	u.All.Short = series(sc, end-shortSpan, BucketSec, shortSpan/BucketSec, Every, "")
+	wend := n - n%hourSec + hourSec
+	u.All.Week = series(sc, wend-week, hourSec, week/hourSec, Every, "")
+	u.All.Days = series(sc, midnight(in.Now).Unix()+day-daysShown*day, day, daysShown, Every, "")
+	last := len(Families)
+	for i := range u.All.Days.Out[last] {
+		u.All.UnattributedOut += u.All.Days.Out[last][i]
+		u.All.UnattributedCache += u.All.Days.CacheRead[last][i]
+	}
+
+	u.Capacity = capacity(n, u.Accounts)
+	return u
+}
+
+func series(sc *Scanner, start, step int64, n int, w Which, acct string) model.TokenSeries {
+	out, cr := sc.Buckets(start, step, n, w, acct)
+	return model.TokenSeries{Start: start, Step: step, Out: out, CacheRead: cr}
+}
+
+// midnight is the start of the local day of t.
+func midnight(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, t.Location())
+}
+
+func lastAt(rs []quota.Reading) int64 {
+	if len(rs) == 0 {
+		return 0
+	}
+	return rs[len(rs)-1].At
+}
+
+func floor(v, step int64) int64 { return v - v%step }
+
+// buildAccount is one account's view: its windows, its reset, its tokens. rs is
+// the account's readings, oldest first; fresh says the newest is a live reading.
+func buildAccount(n int64, key string, rs []quota.Reading, fresh bool, sc *Scanner) model.AccountUsage {
+	a := model.AccountUsage{Key: key, Label: "unknown account"}
+	if key != "" {
+		a.Label = "account"
+	}
+	var latest quota.Reading
+	have := len(rs) > 0
+	if have {
+		latest = rs[len(rs)-1]
+		if latest.Label != "" {
+			a.Label = latest.Label
+		}
+		a.Plan = latest.Plan
+		a.RecordingSince = rs[0].At
+	}
+	// The reset the weeks are aligned on, and where it came from.
+	if have {
 		if w, ok := latest.Find(quota.LabelWeek); ok && w.Available && w.ResetsAt > 0 {
-			u.WeekEnd, u.ResetSource = w.ResetsAt, "aiquota"
-			if quotaErr != "" {
-				u.ResetSource = "recorded"
+			a.WeekEnd, a.ResetSource = w.ResetsAt, "recorded"
+			if fresh {
+				a.ResetSource = "aiquota"
 			}
 		}
 		if w, ok := latest.Find(quota.LabelSession); ok && w.Available && w.ResetsAt > n {
-			u.SessionEnd = w.ResetsAt
+			a.SessionEnd = w.ResetsAt
 		}
 	}
-	if u.WeekEnd == 0 {
-		for i := len(hist) - 1; i >= 0 && u.WeekEnd == 0; i-- {
-			if w, ok := hist[i].Find(quota.LabelWeek); ok && w.Available && w.ResetsAt > 0 {
-				u.WeekEnd, u.ResetSource = w.ResetsAt, "recorded"
-			}
+	for i := len(rs) - 1; i >= 0 && a.WeekEnd == 0; i-- {
+		if w, ok := rs[i].Find(quota.LabelWeek); ok && w.Available && w.ResetsAt > 0 {
+			a.WeekEnd, a.ResetSource = w.ResetsAt, "recorded"
 		}
 	}
 	switch {
-	case u.WeekEnd == 0:
-		u.WeekEnd = n
-	case u.WeekEnd <= n:
+	case a.WeekEnd == 0:
+		a.WeekEnd = n
+	case a.WeekEnd <= n:
 		// A stale reset: the window rolled over since. Step to the next one.
-		u.WeekEnd += ((n-u.WeekEnd)/week + 1) * week
+		a.WeekEnd += ((n-a.WeekEnd)/week + 1) * week
 	}
 
-	// 5 hour window: [SessionEnd-5h, SessionEnd), or the last 5 hours.
-	end := u.SessionEnd
+	// The tokens of this account alone: the unknown account has none.
+	tok := key
+	if key == "" {
+		tok = "\x00"
+	}
+	end := a.SessionEnd
 	if end == 0 {
 		end = n - n%BucketSec + BucketSec
 	}
-	u.Short.Start, u.Short.Step = end-shortSpan, BucketSec
-	u.Short.Out, u.Short.CacheRead = sc.Buckets(u.Short.Start, u.Short.Step, shortSpan/BucketSec)
-
-	// 7 day window, hourly.
-	u.Week.Start, u.Week.Step = floor(u.WeekEnd-week, hourSec), hourSec
-	u.Week.Out, u.Week.CacheRead = sc.Buckets(u.Week.Start, u.Week.Step, week/hourSec)
+	a.Short = series(sc, end-shortSpan, BucketSec, shortSpan/BucketSec, Only, tok)
+	a.Week = series(sc, floor(a.WeekEnd-week, hourSec), hourSec, week/hourSec, Only, tok)
 
 	// Four weeks aligned on the reset, oldest first.
-	first := floor(u.WeekEnd-weeksShown*week, BucketSec)
+	first := floor(a.WeekEnd-weeksShown*week, BucketSec)
 	perWeek := week / cumStep
-	out, cr := sc.Buckets(first, cumStep, weeksShown*perWeek)
+	out, cr := sc.Buckets(first, cumStep, weeksShown*perWeek, Only, tok)
 	for k := 0; k < weeksShown; k++ {
-		w := model.WeekTotals{Start: u.WeekEnd - int64(weeksShown-k)*week}
+		w := model.WeekTotals{Start: a.WeekEnd - int64(weeksShown-k)*week}
 		w.End = w.Start + week
 		w.InProgress = n >= w.Start && n < w.End
 		w.Out, w.CacheRead = make([]float64, len(Families)), make([]float64, len(Families))
@@ -91,33 +204,25 @@ func Build(now time.Time, latest quota.Reading, haveLatest bool, quotaErr string
 			w.CumOut = append(w.CumOut, runOut)
 			w.CumCacheRead = append(w.CumCacheRead, runCR)
 		}
-		w.Percent, w.Recorded = weekPercent(hist, latest, haveLatest, w.Start, w.End)
-		u.Weeks = append(u.Weeks, w)
+		w.Percent, w.Recorded = weekPercent(rs, w.Start, w.End)
+		a.Weeks = append(a.Weeks, w)
 	}
 
 	// The official windows, with their recorded history.
-	rs := hist
-	if haveLatest {
-		rs = append(append([]quota.Reading(nil), hist...), latest)
-	}
-	for _, w := range latest.Windows {
-		qw := model.QuotaWindow{Label: w.Label, Available: w.Available, Percent: w.Percent, ResetsAt: w.ResetsAt}
-		if w.Available {
-			qw.History = history(rs, w.Label, n, w.Label == quota.LabelSession)
+	if have {
+		for _, w := range latest.Windows {
+			qw := model.QuotaWindow{Label: w.Label, Available: w.Available, Percent: w.Percent, ResetsAt: w.ResetsAt}
+			if w.Available {
+				qw.History = history(rs, w.Label, n, w.Label == quota.LabelSession)
+			}
+			a.Windows = append(a.Windows, qw)
 		}
-		u.Windows = append(u.Windows, qw)
 	}
-	return u
+	return a
 }
 
-func floor(v, step int64) int64 { return v - v%step }
-
 // weekPercent is the last official weekly percentage recorded in [start, end].
-func weekPercent(hist []quota.Reading, latest quota.Reading, have bool, start, end int64) (float64, bool) {
-	rs := hist
-	if have {
-		rs = append(append([]quota.Reading(nil), hist...), latest)
-	}
+func weekPercent(rs []quota.Reading, start, end int64) (float64, bool) {
 	var p float64
 	var ok bool
 	var at int64
@@ -159,19 +264,56 @@ func history(rs []quota.Reading, label string, now int64, fine bool) []model.Quo
 	return out
 }
 
+// capacity sums what is left of the weekly windows, in account-weeks: an account
+// at 25 % has 0.75 of a week left. A reading whose reset has passed says nothing
+// about now, so its account is listed and not counted.
+func capacity(n int64, accts []model.AccountUsage) model.Capacity {
+	var c model.Capacity
+	for _, a := range accts {
+		if len(a.Windows) == 0 {
+			continue
+		}
+		it := model.CapacityItem{Key: a.Key, Label: a.Label, Active: a.Active}
+		for _, w := range a.Windows {
+			if !w.Available {
+				continue
+			}
+			switch w.Label {
+			case quota.LabelSession:
+				it.SessionOK, it.Session, it.SessionNext = true, w.Percent, w.ResetsAt
+			case quota.LabelWeek:
+				it.WeeklyOK, it.Weekly, it.NextReset = true, w.Percent, w.ResetsAt
+			}
+		}
+		if it.SessionOK && it.SessionNext <= n {
+			it.SessionOK = false // a 5 hour window that has rolled over
+		}
+		if it.WeeklyOK && it.NextReset <= n {
+			it.WeeklyOK, it.Stale = false, true
+		}
+		it.Unknown = a.Key == ""
+		if it.WeeklyOK && !it.Unknown {
+			c.AccountWeeks += (100 - it.Weekly) / 100
+			c.Counted++
+		}
+		c.Items = append(c.Items, it)
+	}
+	return c
+}
+
 // Engine keeps the Quota tab's data current: it scans transcripts every
 // ScanEvery, reads aiquota at most every quota.MinInterval, and records each
-// reading.
+// reading with the account it belongs to.
 type Engine struct {
-	scan  *Scanner
-	store *quota.Store
-	run   quota.Runner
-	now   func() time.Time
+	scan   *Scanner
+	store  *quota.Store
+	run    quota.Runner
+	active func() string
+	now    func() time.Time
 
 	mu       sync.Mutex
 	view     *model.Usage
-	latest   quota.Reading
-	have     bool
+	live     []quota.Reading
 	quotaErr string
 	lastRead time.Time
 }
@@ -180,14 +322,36 @@ type Engine struct {
 const ScanEvery = time.Minute
 
 // NewEngine reads transcripts under claudeDir/projects, caches sums in
-// cacheDir and records readings in configDir.
+// cacheDir and records readings in configDir. The signed-in account is read from
+// the .claude.json next to claudeDir.
 func NewEngine(claudeDir, cacheDir, configDir string, run quota.Runner) *Engine {
 	return &Engine{
-		scan:  NewScanner(filepath.Join(claudeDir, "projects"), filepath.Join(cacheDir, "usage.json")),
-		store: quota.NewStore(configDir),
-		run:   run,
-		now:   time.Now,
+		scan:   NewScanner(filepath.Join(claudeDir, "projects"), filepath.Join(cacheDir, "usage.json")),
+		store:  quota.NewStore(configDir),
+		run:    run,
+		active: func() string { return ActiveKey(filepath.Join(filepath.Dir(claudeDir), ".claude.json")) },
+		now:    time.Now,
 	}
+}
+
+// ActiveKey is the key of the account Claude Code is signed in to, from the
+// oauthAccount of its .claude.json: "" when that cannot be read. Only the
+// account id is decoded, and only its hash is kept.
+func ActiveKey(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	var c struct {
+		OAuth struct {
+			ID string `json:"accountUuid"`
+		} `json:"oauthAccount"`
+	}
+	if json.NewDecoder(io.LimitReader(f, 32<<20)).Decode(&c) != nil {
+		return ""
+	}
+	return quota.AccountKey(c.OAuth.ID)
 }
 
 // Step does one pass at now.
@@ -195,21 +359,27 @@ func (e *Engine) Step(ctx context.Context, now time.Time) {
 	hist, _ := e.store.Load()
 	if e.lastRead.IsZero() || now.Sub(e.lastRead) >= quota.MinInterval {
 		e.lastRead = now
+		before := e.active()
 		b, err := e.run(ctx)
-		var r quota.Reading
+		var rs []quota.Reading
 		if err == nil {
-			r, err = quota.Parse(b)
+			rs, err = quota.Parse(b)
+		}
+		// An account that changed during the reading cannot be told.
+		tag := before
+		if e.active() != before {
+			tag = ""
 		}
 		e.mu.Lock()
 		if err != nil {
 			e.quotaErr = err.Error()
-			if !e.have && len(hist) > 0 {
-				e.latest, e.have = hist[len(hist)-1], true
-			}
 		} else {
-			e.quotaErr, e.latest, e.have = "", r, true
-			if appendErr := e.store.Append(r); appendErr != nil {
-				e.quotaErr = "history not recorded: " + appendErr.Error()
+			e.quotaErr, e.live = "", rs
+			quota.Tag(e.live, tag)
+			for _, r := range e.live {
+				if appendErr := e.store.Append(r); appendErr != nil {
+					e.quotaErr = "history not recorded: " + appendErr.Error()
+				}
 			}
 			hist, _ = e.store.Load()
 		}
@@ -218,12 +388,7 @@ func (e *Engine) Step(ctx context.Context, now time.Time) {
 	e.scan.Refresh(now)
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	// The newest reading is also the last of hist after an append: the view must
-	// not draw it twice.
-	if e.have && len(hist) > 0 && hist[len(hist)-1].At == e.latest.At {
-		hist = hist[:len(hist)-1]
-	}
-	e.view = Build(now, e.latest, e.have, e.quotaErr, hist, e.scan)
+	e.view = Build(Input{Now: now, Live: e.live, Hist: hist, QuotaErr: e.quotaErr, Active: e.active()}, e.scan)
 }
 
 // Run steps now and then every ScanEvery until ctx ends.

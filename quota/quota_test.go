@@ -10,15 +10,19 @@ import (
 )
 
 const sample = `{"version":1,"at":"2026-11-20T07:12:08.01871Z","windows":[
- {"label":"Session (5hr)","used_percent":2,"resets_at_unix":1795176600,"verdict":"available"},
- {"label":"Weekly (7 day)","used_percent":54,"resets_at_unix":1795183200,"verdict":"available"},
- {"label":"Weekly Sonnet","used_percent":0,"resets_at_unix":0,"verdict":"n/a"},
- {"label":"Weekly Fable","used_percent":150,"resets_at_unix":1795183200,"verdict":"available"}]}`
+ {"account":"Claude Code","plan":"team","label":"Session (5hr)","used_percent":2,"resets_at_unix":1795176600,"verdict":"available"},
+ {"account":"Claude Code","label":"Weekly (7 day)","used_percent":54,"resets_at_unix":1795183200,"verdict":"available"},
+ {"account":"Claude Code","label":"Weekly Sonnet","used_percent":0,"resets_at_unix":0,"verdict":"n/a"},
+ {"account":"Claude Code","label":"Weekly Fable","used_percent":150,"resets_at_unix":1795183200,"verdict":"available"}]}`
 
 func TestParseKeepsNotAvailableWindowsOutOfTheNumbers(t *testing.T) {
-	r, err := Parse([]byte(sample))
-	if err != nil {
-		t.Fatal(err)
+	rs, err := Parse([]byte(sample))
+	if err != nil || len(rs) != 1 {
+		t.Fatal(err, rs)
+	}
+	r := rs[0]
+	if r.Label != "Claude Code" || r.Plan != "team" || r.Acct != "" {
+		t.Fatalf("%+v", r)
 	}
 	if len(r.Windows) != 4 || r.At == 0 {
 		t.Fatalf("%+v", r)
@@ -52,9 +56,9 @@ func TestParseRefusesWhatIsNotAReading(t *testing.T) {
 		many.WriteString(`{"label":"w","verdict":"available","used_percent":-5}`)
 	}
 	many.WriteString(`]}`)
-	r, err := Parse([]byte(many.String()))
-	if err != nil || len(r.Windows) != maxWindows || r.Windows[0].Percent != 0 {
-		t.Fatalf("%d windows, %v", len(r.Windows), err)
+	rs, err := Parse([]byte(many.String()))
+	if err != nil || len(rs[0].Windows) != maxWindows || rs[0].Windows[0].Percent != 0 {
+		t.Fatalf("%v", err)
 	}
 	if clamp(clampNaN()) != 0 {
 		t.Fatal("NaN not clamped")

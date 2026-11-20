@@ -62,6 +62,9 @@ type quotaView struct {
 	Cum      lineData // 4 x 7 days: cumulative tokens by day
 	WeekPct  lineData // 4 x 7 days: the recorded official weekly percentage
 	Notes    string
+	// Names and Colors are the stacked layers' legend and colours.
+	Names  []string
+	Colors []toolkit.RGBA
 }
 
 // StackColors are the families' colours, in the order of model.Usage.Families:
@@ -96,12 +99,8 @@ func date(at int64) string    { return time.Unix(at, 0).Format("Jan 2 15:04") }
 
 // buildQuota turns the server's usage view into charts. It never draws a window
 // that is not available, and never fills a gap in the recorded history.
-func buildQuota(u *model.Usage, span, kind int, dark bool) quotaView {
+func buildAccountView(a model.AccountUsage, families []string, quotaErr string, span, kind int, dark bool) quotaView {
 	var v quotaView
-	if u == nil {
-		v.Notes = "reading the transcripts..."
-		return v
-	}
 	cols := lineColors(dark)
 	var notes []string
 
@@ -109,13 +108,13 @@ func buildQuota(u *model.Usage, span, kind int, dark bool) quotaView {
 	// available are listed, not drawn.
 	switch span {
 	case SpanShort, SpanWeek:
-		start, end, fmtT := u.Short.Start, u.Short.Start+5*3600, clock
+		start, end, fmtT := a.Short.Start, a.Short.Start+5*3600, clock
 		if span == SpanWeek {
-			start, end, fmtT = u.Week.Start, u.Week.Start+weekSecs, dayTime
+			start, end, fmtT = a.Week.Start, a.Week.Start+weekSecs, dayTime
 		}
 		v.Official = lineData{TimeMin: start, TimeMax: end, Max: 100, Percent: true, FormatTime: fmtT}
 		n := 0
-		for _, w := range u.Windows {
+		for _, w := range a.Windows {
 			isShort := w.Label == quota.LabelSession
 			if isShort != (span == SpanShort) {
 				continue
@@ -131,24 +130,24 @@ func buildQuota(u *model.Usage, span, kind int, dark bool) quotaView {
 				v.Official.Markers = append(v.Official.Markers, toolkit.TimeMarker{At: w.ResetsAt, Label: "reset " + fmtT(w.ResetsAt), Ink: cols[1]})
 			}
 		}
-		for _, w := range u.Windows {
+		for _, w := range a.Windows {
 			if w.Available && (w.Label == quota.LabelSession) == (span == SpanShort) && len(w.History) < 2 {
-				notes = append(notes, "recorded history of "+w.Label+": "+recordingSince(u)+" (a line needs two readings)")
+				notes = append(notes, "recorded history of "+w.Label+": "+recordingSince(a.RecordingSince)+" (a line needs two readings)")
 			}
 		}
-		v.Out = barData{Layers: u.Short.Out, TimeMin: start, TimeMax: end, FormatTime: fmtT}
-		v.Cache = barData{Layers: u.Short.CacheRead, TimeMin: start, TimeMax: end, FormatTime: fmtT}
+		v.Out = barData{Layers: a.Short.Out, TimeMin: start, TimeMax: end, FormatTime: fmtT}
+		v.Cache = barData{Layers: a.Short.CacheRead, TimeMin: start, TimeMax: end, FormatTime: fmtT}
 		if span == SpanWeek {
-			v.Out.Layers, v.Cache.Layers = u.Week.Out, u.Week.CacheRead
+			v.Out.Layers, v.Cache.Layers = a.Week.Out, a.Week.CacheRead
 		}
 	default:
-		v.buildWeeks(u, kind, cols, &notes)
+		v.buildWeeks(a, families, kind, cols, &notes)
 	}
 
-	if u.QuotaErr != "" {
-		notes = append(notes, "aiquota: "+u.QuotaErr)
+	if quotaErr != "" {
+		notes = append(notes, "aiquota: "+quotaErr)
 	}
-	switch u.ResetSource {
+	switch a.ResetSource {
 	case "recorded":
 		notes = append(notes, "weeks aligned on the last recorded reset")
 	case "":
@@ -171,14 +170,14 @@ func pointsOf(h []model.QuotaPoint, start, end int64) []toolkit.TimePoint {
 
 // buildWeeks fills the 4 x 7 days view: tokens per week, the cumulative lines,
 // and the recorded weekly percentage.
-func (v *quotaView) buildWeeks(u *model.Usage, kind int, cols []toolkit.RGBA, notes *[]string) {
-	if len(u.Weeks) == 0 {
+func (v *quotaView) buildWeeks(a model.AccountUsage, families []string, kind int, cols []toolkit.RGBA, notes *[]string) {
+	if len(a.Weeks) == 0 {
 		return
 	}
-	first, last := u.Weeks[0].Start, u.Weeks[len(u.Weeks)-1].End
-	layers := make([][]float64, len(u.Families))
+	first, last := a.Weeks[0].Start, a.Weeks[len(a.Weeks)-1].End
+	layers := make([][]float64, len(families))
 	for f := range layers {
-		for _, w := range u.Weeks {
+		for _, w := range a.Weeks {
 			vals := w.Out
 			if kind == KindCacheRead {
 				vals = w.CacheRead
@@ -192,7 +191,7 @@ func (v *quotaView) buildWeeks(u *model.Usage, kind int, cols []toolkit.RGBA, no
 	v.Cum = lineData{TimeMin: 0, TimeMax: weekSecs, FormatTime: func(at int64) string { return fmt.Sprintf("day %d", at/day) }}
 	var peak float64
 	names := []string{"3 weeks ago", "2 weeks ago", "last week", "this week"}
-	for k, w := range u.Weeks {
+	for k, w := range a.Weeks {
 		cum := w.CumOut
 		if kind == KindCacheRead {
 			cum = w.CumCacheRead
@@ -202,31 +201,31 @@ func (v *quotaView) buildWeeks(u *model.Usage, kind int, cols []toolkit.RGBA, no
 			pts = append(pts, toolkit.TimePoint{At: int64(i+1) * cumStep, Value: c})
 			peak = max(peak, c)
 		}
-		name := names[(len(names)-len(u.Weeks)+k+len(names))%len(names)]
+		name := names[(len(names)-len(a.Weeks)+k+len(names))%len(names)]
 		if w.InProgress {
 			name = "this week (in progress)"
 		}
-		v.Cum.Overlays = append(v.Cum.Overlays, toolkit.TimeLine{Name: name, Ink: cols[(len(u.Weeks)-1-k)%len(cols)], Points: pts})
+		v.Cum.Overlays = append(v.Cum.Overlays, toolkit.TimeLine{Name: name, Ink: cols[(len(a.Weeks)-1-k)%len(cols)], Points: pts})
 	}
 	v.Cum.Max = toolkit.NiceCeiling(peak)
 
 	// The recorded weekly percentage, with the resets marked.
 	v.WeekPct = lineData{TimeMin: first, TimeMax: last, Max: 100, Percent: true, FormatTime: date}
 	var pts []toolkit.TimePoint
-	for _, w := range u.Windows {
+	for _, w := range a.Windows {
 		if w.Label == quota.LabelWeek {
 			pts = pointsOf(w.History, first, last)
 		}
 	}
 	v.WeekPct.Points = pts
-	for _, w := range u.Weeks {
+	for _, w := range a.Weeks {
 		v.WeekPct.Markers = append(v.WeekPct.Markers, toolkit.TimeMarker{At: w.Start, Ink: cols[1]})
 	}
 	if len(pts) < 2 {
-		*notes = append(*notes, "official weekly %: "+recordingSince(u))
+		*notes = append(*notes, "official weekly %: "+recordingSince(a.RecordingSince))
 	}
 	var per []string
-	for _, w := range u.Weeks {
+	for _, w := range a.Weeks {
 		s := "not recorded"
 		if w.Recorded {
 			s = fmt.Sprintf("%.0f %%", w.Percent)
@@ -240,9 +239,9 @@ func (v *quotaView) buildWeeks(u *model.Usage, kind int, cols []toolkit.RGBA, no
 }
 
 // recordingSince says since when the official readings are recorded.
-func recordingSince(u *model.Usage) string {
-	if u.RecordingSince > 0 {
-		return "recording since " + date(u.RecordingSince)
+func recordingSince(at int64) string {
+	if at > 0 {
+		return "recording since " + date(at)
 	}
 	return "no history recorded yet"
 }

@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"github.com/go-agentsync/agentscope/model"
 	"github.com/go-widgets/toolkit"
 )
 
@@ -32,6 +31,16 @@ func (s *Scene) applyMetrics() {
 	s.graph.CornerRadius = s.px(nodeRound)
 	s.table.Columns = tableColumns(s.scale)
 	s.title.FontSize = s.px(20)
+	s.capTable.Columns = capColumns(s.scale)
+}
+
+// capColumns are the capacity table's columns, in device pixels.
+func capColumns(scale float64) []toolkit.TableColumn {
+	w := func(v int) int { return int(float64(v)*scale + 0.5) }
+	return []toolkit.TableColumn{
+		{Title: "Account"}, {Title: "5 h", Width: w(80)}, {Title: "Weekly", Width: w(80)},
+		{Title: "Weeks left", Width: w(100)}, {Title: "Weekly reset", Width: w(180)}, {Title: "Active", Width: w(80)},
+	}
 }
 
 // refreshQuota draws the Quota tab's charts from the usage, the span and the
@@ -39,18 +48,13 @@ func (s *Scene) applyMetrics() {
 func (s *Scene) refreshQuota() {
 	dark := s.vm.Dark.Get()
 	u := s.vm.Usage.Get()
-	v := buildQuota(u, s.vm.Span.Get(), s.vm.Kind.Get(), dark)
-	families := model.Families
-	if u != nil {
-		families = u.Families
-	}
-	colors := StackColors(dark)
+	v := buildQuota(u, s.vm.Account.Get(), s.vm.Span.Get(), s.vm.Kind.Get(), dark)
 	setLines(s.official, v.Official)
 	setLines(s.cum, v.Cum)
 	setLines(s.weekPct, v.WeekPct)
-	setBars(s.outBars, v.Out, families, colors)
-	setBars(s.cacheBars, v.Cache, families, colors)
-	setBars(s.weekBars, v.WeekBars, families, colors)
+	setBars(s.outBars, v.Out, v)
+	setBars(s.cacheBars, v.Cache, v)
+	setBars(s.weekBars, v.WeekBars, v)
 	s.vm.QuotaNotes.Set(v.Notes)
 	s.dirty = true
 }
@@ -69,8 +73,8 @@ func setLines(c *toolkit.TimeSeriesChart, d lineData) {
 	}
 }
 
-func setBars(c *toolkit.StackedBarChart, d barData, families []string, colors []toolkit.RGBA) {
-	c.Layers, c.Names, c.Colors = d.Layers, families, colors
+func setBars(c *toolkit.StackedBarChart, d barData, v quotaView) {
+	c.Layers, c.Names, c.Colors = d.Layers, v.Names, v.Colors
 	c.TimeMin, c.TimeMax = d.TimeMin, d.TimeMax
 	c.FormatTime = d.FormatTime
 	c.FormatValue = Tokens

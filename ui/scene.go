@@ -71,6 +71,9 @@ type Scene struct {
 	weekPct              *toolkit.TimeSeriesChart
 	outBars, cacheBars   *toolkit.StackedBarChart
 	weekBars             *toolkit.StackedBarChart
+	accountDD            *toolkit.DropDown
+	capTable             *toolkit.Table
+	host                 *toolkit.PopoverHost
 	notes                *toolkit.Label
 
 	// Rebuilt by layout.
@@ -151,6 +154,8 @@ func (s *Scene) buildQuotaWidgets() {
 	stack := func() *toolkit.StackedBarChart { return toolkit.NewStackedBarChart(nil, nil) }
 	s.outBars, s.cacheBars, s.weekBars = stack(), stack(), stack()
 	s.notes = toolkit.NewLabel("")
+	s.accountDD = toolkit.NewDropDown([]string{AllAccounts}, 0)
+	s.capTable = toolkit.NewTable(capColumns(1), nil)
 }
 
 // bind connects the widgets to the ViewModel; every observable it subscribes to
@@ -170,6 +175,10 @@ func (s *Scene) bind() {
 		mvvmtk.BindTableSelection(s.table, vm.TableSel, invalidate),
 		mvvmtk.BindListItems(s.detail, vm.Detail, func(l string) string { return l }, invalidate),
 		mvvmtk.BindTableRows(s.table, vm.Rows, Row.Cells, invalidate),
+		mvvmtk.BindDropDownOptions(s.accountDD, vm.AccountOptions, func(o string) string { return o }, invalidate),
+		mvvmtk.BindSelectedIndex(s.accountDD, vm.Account, invalidate),
+		mvvmtk.BindTableRows(s.capTable, vm.Capacity, CapRow.Cells, invalidate),
+		vm.Account.SubscribeChanged(func() { s.syncPages(); s.refreshQuota(); invalidate() }),
 		mvvmtk.BindRadioGroup(s.spanGroup, vm.Span, invalidate),
 		mvvmtk.BindRadioGroup(s.kindGroup, vm.Kind, invalidate),
 		vm.Graph.Selected.SubscribeChanged(invalidate),
@@ -273,7 +282,8 @@ func (s *Scene) layout() {
 	s.panel = card("", side, cardPad)
 
 	s.overlay = toolkit.NewOverlay(s.root)
-	s.overlay.SetBounds(toolkit.Rect{W: s.w, H: s.h})
+	s.host = toolkit.NewPopoverHost(s.overlay)
+	s.host.SetBounds(toolkit.Rect{W: s.w, H: s.h})
 	s.root.SetBounds(toolkit.Rect{X: px(margin), Y: px(margin), W: s.w - 2*px(margin), H: s.h - 2*px(margin)})
 	b := s.pages.Bounds()
 	pw := min(px(panelW), b.W*2/3)
@@ -283,6 +293,15 @@ func (s *Scene) layout() {
 	s.refreshQuota()
 }
 
+// tokens2 is the row of the output and cache-read token charts.
+func tokens2(s *Scene, px func(int) int) toolkit.Widget {
+	h := toolkit.NewHBox()
+	h.Spacing = px(gap)
+	h.AddFlex(card("Output tokens", s.outBars, cardPad), 1)
+	h.AddFlex(card("Cache-read tokens", s.cacheBars, cardPad), 1)
+	return h
+}
+
 // quotaPage is the Quota tab: the span and kind selectors over the charts, and
 // the notes under them. The "range" layout serves the 5 h and 7 day spans, the
 // "weeks" layout the 4 x 7 days one.
@@ -290,6 +309,9 @@ func (s *Scene) quotaPage() toolkit.Widget {
 	px := s.px
 	controls := toolkit.NewHBox()
 	controls.Spacing = px(gap / 2)
+	controls.AddFixed(toolkit.NewLabel("account"), px(64))
+	controls.AddFixed(s.accountDD, px(330))
+	controls.AddFixed(toolkit.NewLabel(""), px(gap))
 	controls.AddFixed(toolkit.NewLabel("span"), px(48))
 	for _, r := range s.spanRadios {
 		controls.AddFixed(r, px(radioW))
@@ -319,9 +341,28 @@ func (s *Scene) quotaPage() toolkit.Widget {
 	wk.AddFlex(upper, 3)
 	wk.AddFlex(card("Official weekly % (recorded)", s.weekPct, cardPad), 2)
 
+	// The aggregated layouts add the capacity table (every account's 5 h and
+	// weekly percentages side by side) under the charts.
+	capCard := func() *toolkit.Frame { return card("Accounts: usage and capacity left", s.capTable, cardPad) }
+	allRange := toolkit.NewVBox()
+	allRange.Spacing = px(gap)
+	allRange.AddFlex(card("Official usage by account (% of each window)", s.official, cardPad), 5)
+	allRange.AddFlex(tokens2(s, px), 4)
+	allRange.AddFlex(capCard(), 3)
+	allUpper := toolkit.NewHBox()
+	allUpper.Spacing = px(gap)
+	allUpper.AddFlex(card("Tokens per calendar day, all accounts", s.weekBars, cardPad), 1)
+	allUpper.AddFlex(card("Official weekly % by account, each account's resets marked", s.weekPct, cardPad), 1)
+	allWeeks := toolkit.NewVBox()
+	allWeeks.Spacing = px(gap)
+	allWeeks.AddFlex(allUpper, 5)
+	allWeeks.AddFlex(capCard(), 3)
+
 	s.quota = toolkit.NewStack()
 	s.quota.AddPage("range", rng)
 	s.quota.AddPage("weeks", wk)
+	s.quota.AddPage("allrange", allRange)
+	s.quota.AddPage("allweeks", allWeeks)
 
 	page := toolkit.NewVBox()
 	page.Spacing = px(gap)
@@ -334,11 +375,14 @@ func (s *Scene) quotaPage() toolkit.Widget {
 // syncPages shows the page of the tab, and the layout of the span.
 func (s *Scene) syncPages() {
 	s.pages.SetVisible([]string{"graph", "quota"}[min(max(s.vm.Tab.Get(), 0), 1)])
+	page := "range"
 	if s.vm.Span.Get() == SpanWeeks {
-		s.quota.SetVisible("weeks")
-	} else {
-		s.quota.SetVisible("range")
+		page = "weeks"
 	}
+	if s.vm.Account.Get() == 0 {
+		page = "all" + page
+	}
+	s.quota.SetVisible(page)
 	// The page that was hidden has no bounds yet.
 	s.pages.SetBounds(s.pages.Bounds())
 }
@@ -406,7 +450,7 @@ func (s *Scene) Dirty() bool {
 func (s *Scene) Draw(buf []byte) {
 	fillBG(buf, s.theme.Background)
 	p := painter.NewPixelPainter(buf, s.w, s.h)
-	s.overlay.Draw(p, s.theme)
+	s.host.Draw(p, s.theme)
 }
 
 // targets are the widgets that take a click, topmost first: the panel's over the
@@ -420,6 +464,7 @@ func (s *Scene) targets() []toolkit.Widget {
 	if s.vm.Tab.Get() == TabGraph {
 		return append(t, s.graph)
 	}
+	t = append(t, s.accountDD)
 	for _, r := range s.spanRadios {
 		t = append(t, r)
 	}
@@ -434,6 +479,11 @@ func (s *Scene) targets() []toolkit.Widget {
 // HandleClick dispatches a click at surface (x, y) to the widget under it. A
 // click on the open panel never reaches the graph beneath it.
 func (s *Scene) HandleClick(x, y int) bool {
+	if s.accountDD.PopoverOpen() { // the open list takes the click (a click outside closes it)
+		s.accountDD.PopoverClick(x, y)
+		s.dirty = true
+		return true
+	}
 	for _, w := range s.targets() {
 		r := w.Bounds()
 		if inside(x, y, r) {

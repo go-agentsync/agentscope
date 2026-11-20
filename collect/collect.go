@@ -524,9 +524,8 @@ func modelsOf(ts *tstate, horizon time.Time) (string, []model.ModelSeen) {
 			all = append(all, model.ModelSeen{ID: m.id, Last: m.last})
 		}
 	}
-	if len(all) == 0 {
-		return "", nil
-	}
+	// No model since the horizon: the loop below finds none and returns ("", nil),
+	// all being nil, so an empty list needs no refusal of its own.
 	// Claude Code writes assistant entries whose model is the placeholder
 	// "<synthetic>" (an error or an interruption, not an answer by a model):
 	// they are listed with the models seen, but are never "the latest model".

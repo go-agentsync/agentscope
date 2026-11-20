@@ -95,23 +95,17 @@ func (s *Stamps) last() (Stamp, bool) {
 
 // lastOf reads the last well-formed stamp in the tail of a file.
 func lastOf(path string) (Stamp, bool) {
-	f, err := os.Open(path)
-	if err != nil {
-		return Stamp{}, false
-	}
+	// Nothing here distinguishes an error from an empty file: a file that cannot
+	// be opened, sized, sought or read has no stamp, and every call below fails
+	// safe on a nil *os.File, so no step gets a guard of its own that no test
+	// could tell from its absence. A read that stops half-way parses what came:
+	// only a well-formed line counts.
+	f, _ := os.Open(path)
 	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return Stamp{}, false
-	}
-	off := max(fi.Size()-tailBytes, 0)
-	if _, err := f.Seek(off, io.SeekStart); err != nil {
-		return Stamp{}, false
-	}
-	b, err := io.ReadAll(io.LimitReader(f, tailBytes))
-	if err != nil {
-		return Stamp{}, false
-	}
+	end, _ := f.Seek(0, io.SeekEnd)
+	off := max(end-tailBytes, 0)
+	f.Seek(off, io.SeekStart)
+	b, _ := io.ReadAll(io.LimitReader(f, tailBytes))
 	if off > 0 { // the first line of the window is cut in the middle
 		if i := bytes.IndexByte(b, '\n'); i >= 0 {
 			b = b[i+1:]

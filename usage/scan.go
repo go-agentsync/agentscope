@@ -347,9 +347,9 @@ func readLine(br *bufio.Reader) (line []byte, n int64, complete bool) {
 		}
 		switch {
 		case err == nil:
-			if over {
-				return nil, n, true
-			}
+			// buf is nil exactly when the line was over the bound (a line holds at
+			// least its newline, so a kept one is never nil): the caller counts a
+			// nil line as skipped.
 			return buf, n, true
 		case errors.Is(err, bufio.ErrBufferFull):
 			continue
@@ -437,9 +437,8 @@ type cachedSum struct {
 const cacheVersion = 3
 
 func (s *Scanner) load() {
-	if s.cache == "" {
-		return
-	}
+	// No cache path reads nothing: ReadFile("") is an error, so an empty path
+	// needs no refusal of its own.
 	b, err := os.ReadFile(s.cache)
 	if err != nil {
 		return

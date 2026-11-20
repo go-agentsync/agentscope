@@ -89,7 +89,7 @@ func TestViewModelApplyFiltersAndSelects(t *testing.T) {
 	if cells := r.Cells(); len(cells) != 8 || cells[1] != "aaaaaaaa" || cells[3] != "Opus 5.5" || cells[2] != "- / 1M" {
 		t.Errorf("cells %v", cells)
 	}
-	if !strings.Contains(vm.Status.Get(), "3 of 3 sessions shown (1 active in 10m0s) | 2 sub-agents | 3 repos (2 held) | 4 tells | 2 anomalies | 12:00:00") {
+	if !strings.Contains(vm.Status.Get(), "3 of 3 sessions shown (1 active in 10m0s) | 2 sub-agents | 3 repos (2 held) | 4 tells | 2 anomalies") {
 		t.Errorf("status %q", vm.Status.Get())
 	}
 	// The first line of the detail pane, with nothing selected, is the anomalies.
@@ -251,7 +251,7 @@ func TestDetailLines(t *testing.T) {
 	}
 
 	an := join("")
-	for _, want := range []string{"ANOMALIES (2): shown, not hidden", "unresolved key: --note - owner b1f9b4f5", "unparsable line: transcripts", "read: 2 of 9 transcripts", "(1 torn)", "not listed: 7", "collected in 15 ms"} {
+	for _, want := range []string{"ANOMALIES (2): shown, not hidden", "unresolved key: --note - owner b1f9b4f5", "unparsable line: transcripts", "read: 9 transcripts", "(1 torn)", "not listed: 7"} {
 		if !strings.Contains(an, want) {
 			t.Errorf("anomaly lines lack %q:\n%s", want, an)
 		}

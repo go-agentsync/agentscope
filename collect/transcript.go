@@ -281,10 +281,7 @@ func discardLine(br *bufio.Reader) (int64, error) {
 	for {
 		b, err := br.ReadSlice('\n')
 		n += int64(len(b))
-		if err == nil {
-			return n, nil
-		}
-		if !errors.Is(err, bufio.ErrBufferFull) {
+		if !errors.Is(err, bufio.ErrBufferFull) { // nil, the newline, is returned too
 			return n, err
 		}
 	}
@@ -310,9 +307,9 @@ func readLine(br *bufio.Reader, maxLine int) (line []byte, n int64, complete boo
 		}
 		switch {
 		case e == nil:
-			if over {
-				return nil, n, true, nil
-			}
+			// buf is nil exactly when the line was over the bound (a line holds at
+			// least its newline, so a kept one is never nil), and TrimRight keeps
+			// a nil as nil: the caller counts a nil line as skipped.
 			return bytes.TrimRight(buf, "\r\n"), n, true, nil
 		case errors.Is(e, bufio.ErrBufferFull):
 			continue

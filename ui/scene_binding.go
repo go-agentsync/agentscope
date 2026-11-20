@@ -48,6 +48,13 @@ func capColumns(scale float64) []toolkit.TableColumn {
 // refreshQuota draws the Quota tab's charts from the usage, the span and the
 // kind, and says what is missing in the notes.
 func (s *Scene) refreshQuota() {
+	// The charts of a tab nobody is looking at are not rebuilt, and nothing is
+	// repainted for them; the first time the tab is shown they are.
+	if s.vm.Tab.Get() != TabQuota {
+		s.quotaStale = true
+		return
+	}
+	s.quotaStale = false
 	dark := s.vm.Dark.Get()
 	u := s.vm.Usage.Get()
 	v := buildQuota(u, s.vm.Account.Get(), s.vm.Span.Get(), s.vm.Kind.Get(), dark)

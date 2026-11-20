@@ -114,10 +114,8 @@ func TestFlagValidation(t *testing.T) {
 		{"snapshot", "--claude-dir", claude, "--horizon", "-1h"},
 		{"snapshot", "--claude-dir", claude, "--max-agents", "-1"},
 		{"snapshot", "extra"},
-		{"serve", "--claude-dir", claude, "--active", "0s"},
-		{"serve", "--claude-dir", claude, "--interval", "1ms"},
-		{"serve", "--claude-dir", claude, "--web", filepath.Join(t.TempDir(), "absent")},
-		{"serve", "--claude-dir", claude, "--web", t.TempDir(), "--addr", "0.0.0.0:0"},
+		// The serve refusals are in survivors_test.go: they must never be able to
+		// serve on the default address, or to serve at all.
 	} {
 		if _, _, err := run(t, args...); err == nil {
 			t.Errorf("%v: no error", args)

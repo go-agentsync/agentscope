@@ -84,7 +84,10 @@ func (d *cdp) call(ctx context.Context, sess, method string, params any) (json.R
 }
 
 // dragSpec is the -drag flag: "x1,y1,x2,y2", done after the clicks.
-var dragSpec string
+var dragSpec, evalExpr string
+
+// portPoll is how often run looks for the DevTools port file, 100 times.
+var portPoll = 100 * time.Millisecond
 
 func run(ctx context.Context, chrome, url, out string, wait time.Duration, scroll, w, h int, click string, dark bool) error {
 	if in, err := insideGitTree(out); err != nil || in {
@@ -107,7 +110,7 @@ func run(ctx context.Context, chrome, url, out string, wait time.Duration, scrol
 		if b, err := os.ReadFile(filepath.Join(prof, "DevToolsActivePort")); err == nil {
 			port, _, _ = strings.Cut(string(b), "\n")
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(portPoll)
 	}
 	if port == "" {
 		return errors.New("Chrome did not publish its DevTools port")
@@ -181,6 +184,13 @@ func run(ctx context.Context, chrome, url, out string, wait time.Duration, scrol
 			time.Sleep(500 * time.Millisecond)
 		}
 	}
+	if evalExpr != "" { // a measurement: evaluate in the page and print the result
+		raw, err := d.call(ctx, s, "Runtime.evaluate", map[string]any{"expression": evalExpr, "returnByValue": true})
+		if err != nil {
+			return err
+		}
+		fmt.Println("eval:", string(raw))
+	}
 	if dragSpec != "" { // press at x1,y1, move to x2,y2, release: a drag of a divider
 		var x1, y1, x2, y2 int
 		if _, err := fmt.Sscanf(dragSpec, "%d,%d,%d,%d", &x1, &y1, &x2, &y2); err != nil {
@@ -237,6 +247,7 @@ func main() {
 	scroll := flag.Int("scroll", 0, "wheel steps over the graph before the capture")
 	click := flag.String("click", "", "x,y of a click (e.g. a node) before the capture; x,y;x,y for several")
 	flag.StringVar(&dragSpec, "drag", "", "x1,y1,x2,y2: press, move and release (resizing the panel's divider) after the clicks")
+	flag.StringVar(&evalExpr, "eval", "", "a JavaScript expression evaluated in the page after the wait, its result printed (e.g. agentscopeStats())")
 	dark := flag.Bool("dark", false, "emulate prefers-color-scheme: dark")
 	w := flag.Int("w", 1680, "window width")
 	h := flag.Int("h", 960, "window height")
@@ -245,7 +256,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "capture: -out is required")
 		os.Exit(2)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), *wait+90*time.Second)
 	defer cancel()
 	if err := run(ctx, *chrome, *url, *out, *wait, *scroll, *w, *h, *click, *dark); err != nil {
 		fmt.Fprintln(os.Stderr, "capture:", err)

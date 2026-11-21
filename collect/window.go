@@ -66,7 +66,7 @@ func AgentWindows(claudeDir string) map[string]int64 {
 // block.
 func frontmatterWindow(doc string) (int64, bool) {
 	lines := strings.Split(doc, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	if strings.TrimSpace(lines[0]) != "---" { // Split always returns one line
 		return 0, false
 	}
 	for _, l := range lines[1:] {

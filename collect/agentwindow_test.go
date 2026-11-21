@@ -23,7 +23,7 @@ func TestAgentWindowsComeFromTheTypeDefinitions(t *testing.T) {
 	put("checker.md", "---\nautoCompactWindow: 100000\n---\n")
 	put("none.md", "---\nname: none\n---\n")
 	put("bad.md", "---\nautoCompactWindow: lots\n---\n")
-	put("nofront.md", "autoCompactWindow: 7\n")
+	put("nofront.md", "# no frontmatter\nautoCompactWindow: 7\n")
 	put("empty.md", "")
 	got := AgentWindows(dir)
 	if len(got) != 2 || got["implementer"] != 200000 || got["checker"] != 100000 {

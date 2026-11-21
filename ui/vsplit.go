@@ -46,15 +46,6 @@ func splitShare(a, b int) int {
 	return snapSplit(ClampSplit((a*SplitScale + (a+b)/2) / (a + b)))
 }
 
-// sessionsShare is the height the Sessions card gets out of room, the height both
-// cards share once their padding is out, at the ViewModel's split and with neither
-// pane under its minimum. It sizes the filter rows before the splitter lays out.
-func (s *Scene) sessionsShare(room int) int {
-	avail := room - s.px(toolkit.SplitterHandleW)
-	lo := s.px(PaneMinH) - 2*s.px(cardPad) // a pane's minimum, less its own padding
-	return max(min(avail*s.vm.Split.Get()/SplitScale, avail-lo), lo)
-}
-
 // stack puts the Sessions and the Details cards one above the other in a vertical
 // splitter. Its panes are given their own weights, mirrored from the ViewModel's
 // Split (the mirrors of the splitter a layout replaces are dropped); what the owner

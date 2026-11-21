@@ -61,7 +61,7 @@ type Scene struct {
 	models  [ModelChipSlots]*toolkit.Chip
 	graph   *toolkit.GraphView
 	table   *toolkit.Table
-	detail  *toolkit.ListBox
+	detail  *toolkit.WrapList
 	status  *toolkit.Label
 
 	// The side panel: a top bar with its title and a close button, the filter row,
@@ -79,11 +79,9 @@ type Scene struct {
 	hover                   int               // the splitter divider under the pointer, -1 for none
 	vsplit                  *toolkit.Splitter // Sessions over Details, inside the panel
 	vhover                  int               // the divider of vsplit under the pointer, -1 for none
-	filtersShown            bool              // the Sessions pane has room for its filter rows
 	panelFocus              []toolkit.Widget
 	dockUnsub, splitUnsub   []func()
-	quotaStale              bool                   // the usage changed while the Quota tab was not shown
-	shownChecks             []*toolkit.CheckButton // the model check boxes the layout had room for
+	quotaStale              bool // the usage changed while the Quota tab was not shown
 
 	// The Rename action of the accounts table, and its dialog.
 	renameBtn   *toolkit.Button
@@ -111,7 +109,7 @@ type Scene struct {
 	gRec      *toolkit.TimeSeriesChart
 	gBars     *toolkit.StackedBarChart
 	gTable    *toolkit.Table
-	gDetail   *toolkit.ListBox
+	gDetail   *toolkit.WrapList
 	gDecision *toolkit.DropDown
 	gChips    [GuardChipSlots]*toolkit.Chip
 	gNotes    *toolkit.Label
@@ -169,7 +167,7 @@ func NewScene(w, h int) *Scene {
 	// returns before selecting otherwise; go-widgets/toolkit#595); a plain
 	// click still selects one row.
 	s.table.MultiSelect = true
-	s.detail = toolkit.NewListBox(nil)
+	s.detail = toolkit.NewWrapList(nil)
 	s.status = toolkit.NewLabel("")
 	s.buildPanelWidgets()
 
@@ -260,7 +258,7 @@ func (s *Scene) bind() {
 		mvvmtk.BindLabel(s.status, vm.Status, invalidate),
 		mvvmtk.BindLabel(s.notes, vm.QuotaNotes, invalidate),
 		mvvmtk.BindTableSelection(s.table, vm.TableSel, invalidate),
-		mvvmtk.BindListItems(s.detail, vm.Detail, func(l string) string { return l }, invalidate),
+		bindWrapList(s.detail, vm.Detail, invalidate),
 		mvvmtk.BindTableRows(s.table, vm.Rows, Row.Cells, invalidate),
 		mvvmtk.BindDropDownOptions(s.accountDD, vm.AccountOptions, func(o string) string { return o }, invalidate),
 		mvvmtk.BindSelectedIndex(s.accountDD, vm.Account, invalidate),
@@ -308,11 +306,10 @@ func (s *Scene) bind() {
 		mvvmtk.BindEntryText(s.renameEntry, vm.Rename.Text, invalidate),
 		mvvmtk.BindLabel(s.renameErr, vm.Rename.Err, invalidate),
 		vm.Rename.Open.SubscribeChanged(func() { s.syncDialog(); invalidate() }),
-		vm.PanelW.SubscribeChanged(func() { s.updateDetailChars(); invalidate() }), // the splitter lays itself out on its Size
+		vm.PanelW.SubscribeChanged(invalidate), // the splitter lays itself out on its Size
 		// A new split decides which filter rows the Sessions pane has room for.
 		vm.Split.SubscribeChanged(func() { s.layout(); invalidate() }),
 		vm.ColW.SubscribeChanged(func() { s.applyMetrics(); invalidate() }),
-		vm.DetailChars.SubscribeChanged(invalidate),
 	)
 	for i := range s.modelChecks {
 		s.unbind = append(s.unbind,
@@ -441,7 +438,6 @@ func (s *Scene) layout() {
 	s.root.SetBounds(toolkit.Rect{X: px(margin), Y: px(margin), W: s.w - 2*px(margin), H: s.h - 2*px(margin)})
 	s.vm.ViewW.Set(int(float64(s.w)/s.scale + 0.5))
 	s.hover, s.vhover = -1, -1
-	s.updateDetailChars()
 	s.syncPages()
 	s.syncPanel()
 	s.refreshQuota()
@@ -470,15 +466,19 @@ func (s *Scene) buildPanel() {
 		}
 		return h
 	}
-	filters := toolkit.NewVBox()
-	filters.Spacing = px(gap / 3)
-	filters.AddFixed(row(s.stateDD, s.lastDD), px(controlsH))
-	rows := 2
+	// The Sessions card is one column: the filter rows above the table. The rows are
+	// optional: a pane too short for them to leave the table a readable share
+	// drops them (the box does that, not this code), the model check boxes first.
+	// The state, activity and repository filters and the Clear button outrank the
+	// check boxes; the table keeps the rest.
+	sessions := toolkit.NewVBox()
+	sessions.Spacing = px(gap / 2)
+	sessions.AddOptional(row(s.stateDD, s.lastDD), px(controlsH), px(minTableH))
 	clearRow := toolkit.NewHBox()
 	clearRow.Spacing = px(gap / 2)
 	clearRow.AddFlex(s.repoDD, 1)
 	clearRow.AddFixed(s.clearBtn, px(clearW))
-	filters.AddFixed(clearRow, px(controlsH))
+	sessions.AddOptional(clearRow, px(controlsH), px(minTableH))
 	var on []toolkit.Widget
 	for i, c := range s.modelChecks {
 		if l := s.vm.Filters.ModelLabels[i].Get(); l != "" {
@@ -486,32 +486,10 @@ func (s *Scene) buildPanel() {
 			on = append(on, c)
 		}
 	}
-	// A short window has no room for every row of model check boxes: the rows that
-	// do not fit are left out (the state, activity and repository filters, and the
-	// Clear button, always stay), so the table keeps its share and nothing spills.
-	room := s.h - 2*px(margin) - px(headerH) - toolkit.TouchTarget(px(toolkit.NotebookTabStripH)) - px(toolkit.StatusbarH) - 5*px(gap) - 4*px(cardPad) - px(controlsH)
-	inner := s.sessionsShare(room) - px(28) // the Sessions card's share, less its title
-	spare := inner - px(minTableH) - rows*px(controlsH)
-	maxModelRows := max(spare/(px(controlsH)+px(gap/3)), 0)
-	s.shownChecks = s.shownChecks[:0]
-	for len(on) > 0 && maxModelRows > 0 {
+	for len(on) > 0 {
 		n := min(3, len(on))
-		filters.AddFixed(row(on[:n]...), px(controlsH))
-		for _, w := range on[:n] {
-			s.shownChecks = append(s.shownChecks, w.(*toolkit.CheckButton))
-		}
-		on, rows, maxModelRows = on[n:], rows+1, maxModelRows-1
-	}
-	filterH := rows*px(controlsH) + (rows-1)*px(gap/3)
-
-	// A Sessions pane dragged down to its minimum has no room for the filter rows
-	// above a table worth reading: they leave, and the table keeps the pane (the
-	// table scrolls inside it). They come back as soon as the pane has the room.
-	s.filtersShown = inner >= filterH+px(gap/2)+px(minTableFloor)
-	sessions := toolkit.NewVBox()
-	sessions.Spacing = px(gap / 2)
-	if s.filtersShown {
-		sessions.AddFixed(filters, filterH)
+		sessions.AddOptional(row(on[:n]...), px(controlsH), px(minTableH))
+		on = on[n:]
 	}
 	sessions.AddFlex(s.table, 1)
 
@@ -591,12 +569,11 @@ func (s *Scene) dock() {
 	s.split.Now = func() time.Time { return s.clock() } // its double-click detection reads the scene's clock
 }
 
-// updateDetailChars tells the ViewModel how many characters fit across the
-// Details pane at the panel's width, so its lines wrap instead of running off.
-func (s *Scene) updateDetailChars() {
-	avg := max(toolkit.TextWidth("abcdefghijklmnopqrstuvwxyz0123456789 ")/38, 1)
-	room := s.px(s.vm.EffectivePanelW()) - 4*s.px(cardPad) - s.px(28) // two card pads a side, the scrollbar
-	s.vm.DetailChars.Set(max(room/avg, minDetailChars))
+// placed reports whether the layout gave w a place: a widget a box left out is
+// laid out in an empty rectangle.
+func placed(w toolkit.Widget) bool {
+	b := w.Bounds()
+	return b.W > 0 && b.H > 0
 }
 
 // tokens2 is the row of the output and cache-read token charts.
@@ -799,9 +776,14 @@ func (s *Scene) targets() []toolkit.Widget {
 	}
 	if s.PanelVisible() {
 		t = append(t, s.closeBtn)
-		if s.filtersShown { // the rows a short Sessions pane has no room for take no click
-			t = append(t, s.clearBtn, s.stateDD, s.lastDD, s.repoDD)
-			for _, c := range s.shownChecks {
+		// A row a short Sessions pane has no room for is laid out empty and takes no click.
+		for _, c := range []toolkit.Widget{s.clearBtn, s.stateDD, s.lastDD, s.repoDD} {
+			if placed(c) {
+				t = append(t, c)
+			}
+		}
+		for _, c := range s.modelChecks {
+			if placed(c) {
 				t = append(t, c)
 			}
 		}

@@ -202,10 +202,28 @@ func TestTheDetailPaneIsBoundedAndWrapsAtTheWidthItIsGiven(t *testing.T) {
 	if n != maxDetailLines+1 || !strings.Contains(vm.Guard.Detail.At(n-1), "more line(s)") {
 		t.Fatalf("%d lines", n)
 	}
-	vm.Guard.Chars.Set(30)
-	for _, l := range vm.Guard.Detail.Slice()[:50] {
-		if len([]rune(l)) > 32 {
-			t.Fatalf("a line of %d characters at width 30: %q", len([]rune(l)), l)
+}
+
+// The Selected-lesson pane breaks its lines at the width it is given: the widget
+// does it, so the lines at a narrow pane are more and none is wider than the pane.
+func TestTheLessonPaneWrapsAtItsWidth(t *testing.T) {
+	s := newScene(t)
+	f := guardFixture()
+	f.Rows[0].GateText = strings.Repeat("word ", 80)
+	s.VM().Apply(snapWith(f))
+	s.VM().Tab.Set(TabGuardrails)
+	s.VM().Guard.Sel.Set(0)
+	s.Resize(testW, testH, 1)
+	wide := len(s.gDetail.Lines())
+	s.Resize(testW/2, testH, 1)
+	narrow := s.gDetail.Lines()
+	if len(narrow) <= wide {
+		t.Fatalf("%d lines narrow, %d wide", len(narrow), wide)
+	}
+	room := s.gDetail.Bounds().W
+	for _, l := range narrow {
+		if w := toolkit.TextWidth(l); w > room {
+			t.Fatalf("a line %d px wide in a pane of %d: %q", w, room, l)
 		}
 	}
 }

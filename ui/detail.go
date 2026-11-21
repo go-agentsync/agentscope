@@ -19,20 +19,18 @@ func (vm *ViewModel) refreshDetail() {
 		gauges = contextRows(vm.snap, vm.Graph.Selected.Get())
 	}
 	setList(vm.Contexts, gauges)
-	lines = wrap(lines, max(vm.DetailChars.Get(), minDetailChars))
-	if len(lines) > maxDetailLines {
-		more := len(lines) - maxDetailLines
-		lines = append(lines[:maxDetailLines], "... "+strconv.Itoa(more)+" more line(s)")
-	}
-	setList(vm.Detail, lines)
+	setList(vm.Detail, capLines(lines))
 }
 
-// detailWidth is the width, in characters, the detail pane breaks lines at until
-// the Scene has measured its panel; minDetailChars is the narrowest it is told.
-const (
-	detailWidth    = 84
-	minDetailChars = 16
-)
+// capLines bounds a detail pane to maxDetailLines raw lines and says what was
+// cut. Breaking a long line to the pane's width is the widget's job (a WrapList).
+func capLines(lines []string) []string {
+	if len(lines) > maxDetailLines {
+		more := len(lines) - maxDetailLines
+		lines = append(lines[:maxDetailLines:maxDetailLines], "... "+strconv.Itoa(more)+" more line(s)")
+	}
+	return lines
+}
 
 // gaugeName is the name column of a gauge, cut to fit it.
 func gaugeName(s string) string { return model.Truncate(s, 26) }
@@ -72,37 +70,6 @@ func agentLabel(a model.Agent) string {
 		t = "agent"
 	}
 	return t + " " + a.ID
-}
-
-// wrap breaks every line longer than width runes into continuation lines
-// indented by two spaces; a ListBox clips, it does not wrap.
-func wrap(lines []string, width int) []string {
-	var out []string
-	for _, l := range lines {
-		r := []rune(l)
-		first := true
-		for len(r) > width {
-			cut := width
-			for i := width; i > width/2; i-- {
-				if r[i] == ' ' {
-					cut = i
-					break
-				}
-			}
-			out = append(out, indent(first)+strings.TrimRight(string(r[:cut]), " "))
-			r = []rune(strings.TrimLeft(string(r[cut:]), " "))
-			first = false
-		}
-		out = append(out, indent(first)+string(r))
-	}
-	return out
-}
-
-func indent(first bool) string {
-	if first {
-		return ""
-	}
-	return "  "
 }
 
 // detailLines describes what is selected ("node:<id>" or "edge:<id>"), or the

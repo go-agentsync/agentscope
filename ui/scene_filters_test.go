@@ -32,10 +32,10 @@ func TestFilterWidgetsDriveTheViewModelAndTheTable(t *testing.T) {
 		t.Fatalf("%d %d %d", vm.Filters.Last.Get(), vm.Filters.Repo.Get(), len(s.table.Rows))
 	}
 	// The model check boxes are clickable and bound.
-	if len(s.shownChecks) == 0 {
+	if len(placedChecks(s)) == 0 {
 		t.Fatal("no model check boxes on a panel with room")
 	}
-	x, y := center(s.shownChecks[0].Bounds())
+	x, y := center(placedChecks(s)[0].Bounds())
 	s.HandleClick(x, y)
 	if len(vm.Filters.models) != 1 {
 		t.Fatalf("a click on a check box did not choose its model: %v", vm.Filters.models)
@@ -52,6 +52,17 @@ func TestFilterWidgetsDriveTheViewModelAndTheTable(t *testing.T) {
 	pixels(s)
 }
 
+// placedChecks are the model check boxes the layout gave a place.
+func placedChecks(s *Scene) []*toolkit.CheckButton {
+	var out []*toolkit.CheckButton
+	for _, c := range s.modelChecks {
+		if placed(c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // A short window has no room for the model check boxes: they are left out of the
 // layout and out of the clickable targets, and nothing overflows.
 func TestShortWindowDropsTheModelRowsNotTheFilters(t *testing.T) {
@@ -59,8 +70,8 @@ func TestShortWindowDropsTheModelRowsNotTheFilters(t *testing.T) {
 	s.VM().Apply(filterSnap())
 	s.VM().PanelOpen.Set(true)
 	pixels(s)
-	if len(s.shownChecks) != 0 {
-		t.Fatalf("%d check boxes shown with no room", len(s.shownChecks))
+	if len(placedChecks(s)) != 0 {
+		t.Fatalf("%d check boxes shown with no room", len(placedChecks(s)))
 	}
 	for _, w := range s.targets() {
 		for _, c := range s.modelChecks {

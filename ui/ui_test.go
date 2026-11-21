@@ -258,20 +258,7 @@ func TestDetailLines(t *testing.T) {
 	}
 }
 
-func TestWrapAndDetailBound(t *testing.T) {
-	long := strings.Repeat("word ", 40)
-	got := wrap([]string{"short", long, strings.Repeat("x", 200)}, 30)
-	if got[0] != "short" {
-		t.Error("short lines pass through")
-	}
-	for _, l := range got {
-		if len([]rune(l)) > 32 {
-			t.Errorf("line of %d runes: %q", len([]rune(l)), l)
-		}
-	}
-	if !strings.HasPrefix(got[2], "  ") {
-		t.Errorf("continuations are indented: %q", got[2])
-	}
+func TestDetailBound(t *testing.T) {
 	vm := NewViewModel()
 	s := snap()
 	for i := 0; i < 2*maxDetailLines; i++ {

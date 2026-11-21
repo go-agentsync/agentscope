@@ -113,7 +113,7 @@ func TestThePanelOpensWithSessionsOverDetailsAt55To45(t *testing.T) {
 	if sb.Y+sb.H > db.Y {
 		t.Fatalf("the table %v is not above the details %v", sb, db)
 	}
-	if !s.filtersShown {
+	if !placed(s.stateDD) {
 		t.Fatal("a tall panel shows its filter rows")
 	}
 }
@@ -261,8 +261,8 @@ func TestAPaneAtItsMinimumHasNoRoomForTheFilterRows(t *testing.T) {
 	vm.PanelOpen.Set(true)
 	vm.Split.Set(SplitLo)
 	pixels(s)
-	if s.vsplit.PaneSize(0) != PaneMinH || s.filtersShown {
-		t.Fatalf("Sessions %d, filters shown %v", s.vsplit.PaneSize(0), s.filtersShown)
+	if s.vsplit.PaneSize(0) != PaneMinH || placed(s.stateDD) {
+		t.Fatalf("Sessions %d, filters shown %v", s.vsplit.PaneSize(0), placed(s.stateDD))
 	}
 	for _, w := range s.targets() {
 		if w == toolkit.Widget(s.stateDD) || w == toolkit.Widget(s.clearBtn) {
@@ -274,7 +274,7 @@ func TestAPaneAtItsMinimumHasNoRoomForTheFilterRows(t *testing.T) {
 	}
 	vm.Split.Set(SplitDefault)
 	pixels(s)
-	if !s.filtersShown {
+	if !placed(s.stateDD) {
 		t.Fatal("the rows did not come back")
 	}
 	found := false

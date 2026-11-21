@@ -82,10 +82,7 @@ type GuardState struct {
 	// is not measured.
 	Chips [GuardChipSlots]*mvvm.Observable[string]
 	Notes *mvvm.Observable[string]
-	// Chars is the width, in characters, the detail pane wraps at.
-	Chars *mvvm.Observable[int]
-
-	rows []GuardRow // every row, before the filter
+	rows  []GuardRow // every row, before the filter
 }
 
 func newGuardState() *GuardState {
@@ -93,7 +90,7 @@ func newGuardState() *GuardState {
 		Data: mvvm.NewObservable[*model.Guardrails](nil), Rows: mvvm.NewObservableList[GuardRow](),
 		Sel: mvvm.NewObservable(-1), Detail: mvvm.NewObservableList[string](),
 		Decision: mvvm.NewObservable(0), SortCol: mvvm.NewObservable(GColAfter), SortAsc: mvvm.NewObservable(false),
-		Notes: mvvm.NewObservable("reading the ledger and the transcripts..."), Chars: mvvm.NewObservable(detailWidth),
+		Notes: mvvm.NewObservable("reading the ledger and the transcripts..."),
 	}
 	for i := range g.Chips {
 		g.Chips[i] = mvvm.NewObservable("")
@@ -103,7 +100,6 @@ func newGuardState() *GuardState {
 	g.SortCol.SubscribeChanged(g.refreshRows)
 	g.SortAsc.SubscribeChanged(g.refreshRows)
 	g.Sel.SubscribeChanged(g.refreshDetail)
-	g.Chars.SubscribeChanged(g.refreshDetail)
 	return g
 }
 
@@ -214,12 +210,7 @@ func (g *GuardState) refreshDetail() {
 			}
 		}
 	}
-	lines = wrap(lines, max(g.Chars.Get(), minDetailChars))
-	if len(lines) > maxDetailLines {
-		more := len(lines) - maxDetailLines
-		lines = append(lines[:maxDetailLines], "... "+strconv.Itoa(more)+" more line(s)")
-	}
-	setList(g.Detail, lines)
+	setList(g.Detail, capLines(lines))
 }
 
 // lessonLines describes one lesson: its decision, what its recurrences say about

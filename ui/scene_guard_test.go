@@ -54,7 +54,7 @@ func TestGuardrailsWidgetsFollowTheViewModelAndDrawInBothThemes(t *testing.T) {
 		t.Fatal("no notes")
 	}
 	vm.Guard.Sel.Set(1)
-	if len(s.gDetail.Items) == 0 {
+	if len(s.gDetail.Lines()) == 0 {
 		t.Fatal("the detail pane is empty for a selected lesson")
 	}
 	// The decision filter drives the table.

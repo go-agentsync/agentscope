@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-agentsync/agentscope/model"
 	"github.com/go-widgets/toolkit"
 )
 
@@ -367,16 +366,21 @@ func TestTheDetailsPaneWrapsAtThePanelWidth(t *testing.T) {
 	sn.Sessions[0].Title = "a title long enough to need wrapping at a narrow panel " + "abcdefghij klmnopqrst uvwxyz 0123456789 abcdefghij klmnopqrst uvwxyz 0123456789"
 	vm.Apply(sn)
 	vm.Graph.Selected.Set("node:s:aaaaaaaa")
-	wide := vm.DetailChars.Get()
+	vm.PanelOpen.Set(true)
+	s.Resize(testW, testH, 1)
+	pixels(s)
+	wide := len(s.detail.Lines())
 	vm.PanelW.Set(PanelMinW)
-	narrow := vm.DetailChars.Get()
-	if narrow >= wide || narrow < minDetailChars {
-		t.Fatalf("%d chars narrow, %d wide", narrow, wide)
+	s.Resize(testW, testH, 1)
+	pixels(s)
+	narrow := s.detail.Lines()
+	if len(narrow) <= wide {
+		t.Fatalf("%d lines narrow, %d wide", len(narrow), wide)
 	}
-	for _, l := range vm.Detail.Slice() {
-		if len([]rune(l)) > narrow+2 { // a long unbreakable word may exceed it; ours have spaces
-			t.Fatalf("a Details line of %d characters in a panel of %d: %q", len([]rune(l)), narrow, l)
+	room := s.detail.Bounds().W
+	for _, l := range narrow {
+		if w := toolkit.TextWidth(l); w > room {
+			t.Fatalf("a Details line %d px wide in a pane of %d: %q", w, room, l)
 		}
 	}
-	_ = model.Snapshot{}
 }

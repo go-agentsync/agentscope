@@ -132,11 +132,8 @@ type ViewModel struct {
 	// Filters narrow the sessions table (AND, with the query).
 	Filters *Filters
 	// Contexts are the Details pane's gauges: the selected session and each of its
-	// sub-agents, or the selected sub-agent; DetailChars is the width, in
-	// characters, the Details pane wraps its lines at (the Scene sets it from the
-	// panel's width, so nothing is cut off at the right edge).
-	Contexts    *mvvm.ObservableList[CtxRow]
-	DetailChars *mvvm.Observable[int]
+	// sub-agents, or the selected sub-agent.
+	Contexts *mvvm.ObservableList[CtxRow]
 	// ViewW is the surface's width in logical pixels (set by the Scene), PanelW the
 	// side panel's, kept between PanelMinW and PanelMaxPercent of it; ColW the
 	// sessions table's column widths. All three are persisted per viewer (SetStore).
@@ -186,13 +183,12 @@ func NewViewModel() *ViewModel {
 		AccountOptions: mvvm.NewObservableList(AllAccounts),
 		Capacity:       mvvm.NewObservableList[CapRow](),
 
-		Contexts:    mvvm.NewObservableList[CtxRow](),
-		DetailChars: mvvm.NewObservable(detailWidth),
-		ViewW:       mvvm.NewObservable(DefaultW),
-		PanelW:      mvvm.NewObservable(PanelDefaultW),
-		ColW:        mvvm.NewObservableList(ColDefault...),
-		Split:       mvvm.NewObservable(SplitDefault),
-		CapSel:      mvvm.NewObservable(-1),
+		Contexts: mvvm.NewObservableList[CtxRow](),
+		ViewW:    mvvm.NewObservable(DefaultW),
+		PanelW:   mvvm.NewObservable(PanelDefaultW),
+		ColW:     mvvm.NewObservableList(ColDefault...),
+		Split:    mvvm.NewObservable(SplitDefault),
+		CapSel:   mvvm.NewObservable(-1),
 	}
 	vm.Split.SubscribeChanged(func() {
 		if v := ClampSplit(vm.Split.Get()); v != vm.Split.Get() {
@@ -207,11 +203,6 @@ func NewViewModel() *ViewModel {
 	vm.PanelW.SubscribeChanged(func() {
 		if w := ClampPanelW(vm.PanelW.Get(), vm.ViewW.Get()); w != vm.PanelW.Get() {
 			vm.PanelW.Set(w)
-		}
-	})
-	vm.DetailChars.SubscribeChanged(func() {
-		if vm.have {
-			vm.refreshDetail()
 		}
 	})
 	for i := range vm.ModelChips {

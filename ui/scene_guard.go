@@ -26,7 +26,7 @@ func (s *Scene) buildGuardWidgets() {
 	s.gTable = toolkit.NewTable(guardColumns(1), nil)
 	// A click selects a row only while MultiSelect is on (go-widgets/toolkit#595).
 	s.gTable.MultiSelect = true
-	s.gDetail = toolkit.NewListBox(nil)
+	s.gDetail = toolkit.NewWrapList(nil)
 	s.gDecision = toolkit.NewDropDown(DecisionNames, 0)
 	for i := range s.gChips {
 		s.gChips[i] = toolkit.NewChip("")
@@ -41,7 +41,7 @@ func (s *Scene) bindGuard(invalidate func()) {
 	s.unbind = append(s.unbind,
 		mvvmtk.BindTableRows(s.gTable, g.Rows, GuardRow.Cells, invalidate),
 		mvvmtk.BindTableSelection(s.gTable, g.Sel, invalidate),
-		mvvmtk.BindListItems(s.gDetail, g.Detail, func(l string) string { return l }, invalidate),
+		bindWrapList(s.gDetail, g.Detail, invalidate),
 		mvvmtk.BindSelectedIndex(s.gDecision, g.Decision, invalidate),
 		mvvmtk.BindLabel(s.gNotes, g.Notes, invalidate),
 		g.Data.SubscribeChanged(func() { s.refreshGuard(); invalidate() }),
@@ -74,16 +74,7 @@ func (s *Scene) refreshGuard() {
 	v := buildGuard(s.vm.Guard.Data.Get(), s.vm.Dark.Get())
 	setLines(s.gRec, v.Rec)
 	setBars(s.gBars, v.Bars, quotaView{Names: v.Names, Colors: v.Colors})
-	s.updateGuardChars()
 	s.dirty = true
-}
-
-// updateGuardChars tells the ViewModel how many characters fit across the detail
-// pane, so its lines wrap instead of running off.
-func (s *Scene) updateGuardChars() {
-	avg := max(toolkit.TextWidth("abcdefghijklmnopqrstuvwxyz0123456789 ")/38, 1)
-	room := s.w*2/5 - 4*s.px(cardPad) - s.px(28)
-	s.vm.Guard.Chars.Set(max(room/avg, minDetailChars))
 }
 
 // guardPage is the Guardrails tab: the headline chips and the decision filter over

@@ -121,9 +121,8 @@ type Scene struct {
 	quota   *toolkit.Stack // the Quota tab's two layouts
 	panel   *toolkit.Frame
 
-	keyTarget  toolkit.Widget
-	dragTarget toolkit.Widget
-	dragBounds toolkit.Rect
+	keyTarget toolkit.Widget
+	ptr       toolkit.PointerRouter // routes the mouse: local coordinates, the grab, the dividers
 
 	// clock is the time the splitter's double-click detection reads (time.Now,
 	// unless a test sets another).
@@ -241,6 +240,26 @@ func (s *Scene) buildPanelWidgets() {
 	s.ctxTable = toolkit.NewTable([]toolkit.TableColumn{{Title: "Context of", Width: 150}, {Title: "Context"}}, nil)
 	s.spacer = toolkit.NewLabel("")
 	s.hover, s.vhover = -1, -1
+	s.ptr = toolkit.PointerRouter{Edges: s.edges, Targets: s.targets, OnGrab: s.focusOn}
+}
+
+// focusOn gives the keyboard to the widget a press is about to reach (nobody for
+// a press on nothing); the press itself may then move it again.
+func (s *Scene) focusOn(w toolkit.Widget) {
+	if s.vm.Rename.Open.Get() { // the dialog's entry holds the keyboard
+		return
+	}
+	s.keyTarget = w
+	s.search.SetFocused(w == toolkit.Widget(s.search))
+}
+
+// edges are the dividers a press grabs: the one between Sessions and Details
+// and the panel's left edge, while the panel is shown and no dialog is open.
+func (s *Scene) edges() []toolkit.PointerClaimer {
+	if !s.PanelVisible() || s.vm.Rename.Open.Get() {
+		return nil
+	}
+	return []toolkit.PointerClaimer{s.vsplit, s.split}
 }
 
 // bind connects the widgets to the ViewModel; every observable it subscribes to
@@ -569,13 +588,6 @@ func (s *Scene) dock() {
 	s.split.Now = func() time.Time { return s.clock() } // its double-click detection reads the scene's clock
 }
 
-// placed reports whether the layout gave w a place: a widget a box left out is
-// laid out in an empty rectangle.
-func placed(w toolkit.Widget) bool {
-	b := w.Bounds()
-	return b.W > 0 && b.H > 0
-}
-
 // tokens2 is the row of the output and cache-read token charts.
 func tokens2(s *Scene, px func(int) int) toolkit.Widget {
 	h := toolkit.NewHBox()
@@ -775,17 +787,11 @@ func (s *Scene) targets() []toolkit.Widget {
 		return []toolkit.Widget{s.renameDlg}
 	}
 	if s.PanelVisible() {
-		t = append(t, s.closeBtn)
-		// A row a short Sessions pane has no room for is laid out empty and takes no click.
-		for _, c := range []toolkit.Widget{s.clearBtn, s.stateDD, s.lastDD, s.repoDD} {
-			if placed(c) {
-				t = append(t, c)
-			}
-		}
+		// A row a short Sessions pane has no room for is laid out empty, and the
+		// router gives an empty rectangle no click.
+		t = append(t, s.closeBtn, s.clearBtn, s.stateDD, s.lastDD, s.repoDD)
 		for _, c := range s.modelChecks {
-			if placed(c) {
-				t = append(t, c)
-			}
+			t = append(t, c)
 		}
 		t = append(t, s.table, s.ctxTable, s.detail)
 	}
@@ -821,26 +827,10 @@ func (s *Scene) HandleClick(x, y int) bool {
 	if s.vm.Rename.Open.Get() {
 		return s.clickDialog(x, y)
 	}
-	// The panel's left edge is the divider the owner drags: a press there grabs
-	// the splitter, whose bounds are the whole graph area under it.
-	if s.PanelVisible() {
-		// The divider between Sessions and Details is grabbed the same way.
-		if s.grabDivider(s.vsplit, x, y) || s.grabDivider(s.split, x, y) {
-			return true
-		}
-	}
-	for _, w := range s.targets() {
-		r := w.Bounds()
-		if inside(x, y, r) {
-			s.dragTarget, s.dragBounds = w, r
-			s.keyTarget = w
-			s.search.SetFocused(w == toolkit.Widget(s.search))
-			w.OnEvent(local(toolkit.Event{Kind: toolkit.EventClick, X: x, Y: y}, r))
-			return true
-		}
-	}
-	s.dragTarget, s.keyTarget = nil, nil
-	s.search.SetFocused(false)
+	// The router gives the press to a divider (the panel's left edge, the one
+	// between Sessions and Details) or to the widget under the pointer, and holds
+	// it until the release.
+	s.ptr.Press(x, y, "")
 	return true
 }
 
@@ -852,24 +842,17 @@ func (s *Scene) dropDowns() []*toolkit.DropDown {
 // clickDialog gives a click to the Rename dialog; a click outside it is
 // swallowed, the dialog being modal.
 func (s *Scene) clickDialog(x, y int) bool {
-	r := s.renameDlg.Bounds()
-	if inside(x, y, r) {
-		s.renameDlg.OnEvent(local(toolkit.Event{Kind: toolkit.EventClick, X: x, Y: y}, r))
+	if s.ptr.Press(x, y, "") != nil {
 		s.renameEntry.SetFocused(s.vm.Rename.Open.Get())
 	}
+	s.ptr.Cancel() // the dialog takes the click, not a drag
 	return true
 }
 
 // HandleScroll routes a wheel scroll (Delta in rows, positive = down) to the
 // scrollable under the pointer.
 func (s *Scene) HandleScroll(x, y, delta int) bool {
-	e := toolkit.Event{Kind: toolkit.EventScroll, X: x, Y: y, Delta: delta}
-	for _, w := range s.targets() {
-		if r := w.Bounds(); inside(x, y, r) {
-			w.OnEvent(local(e, r))
-			return true
-		}
-	}
+	s.ptr.Scroll(x, y, delta)
 	return true
 }
 
@@ -940,11 +923,10 @@ func (s *Scene) inPanel(w toolkit.Widget) bool {
 // grabbed it tracks the pointer over the panel's divider (which lights up). It
 // reports whether the picture changed.
 func (s *Scene) HandleMove(x, y int) bool {
-	if s.dragTarget == nil {
-		return s.hoverDivider(x, y)
+	if s.ptr.Drag(x, y) {
+		return true
 	}
-	s.dragTarget.OnEvent(toolkit.Event{Kind: toolkit.EventMouseDrag, X: x - s.dragBounds.X, Y: y - s.dragBounds.Y})
-	return true
+	return s.hoverDivider(x, y)
 }
 
 // hoverDivider tells the splitter where the pointer is, and reports whether that
@@ -955,10 +937,8 @@ func (s *Scene) hoverDivider(x, y int) bool {
 		s.hover, s.vhover = -1, -1
 		return old != -1 || oldV != -1
 	}
-	sb, vb := s.split.Bounds(), s.vsplit.Bounds()
-	s.split.OnEvent(local(toolkit.Event{Kind: toolkit.EventMouseMove, X: x, Y: y}, sb))
-	s.vsplit.OnEvent(local(toolkit.Event{Kind: toolkit.EventMouseMove, X: x, Y: y}, vb))
-	h, v := s.split.HandleAt(x, y), s.vsplit.HandleAt(x, y)
+	s.ptr.Hover(x, y)
+	h, v := s.split.Hovered(), s.vsplit.Hovered()
 	changed := h != s.hover || v != s.vhover
 	s.hover, s.vhover = h, v
 	return changed
@@ -971,35 +951,16 @@ func (s *Scene) Cursor(x, y int) string {
 	if !s.PanelVisible() {
 		return ""
 	}
-	if c := s.vsplit.Cursor(x-s.vsplit.Bounds().X, y-s.vsplit.Bounds().Y); c != "" {
-		return c // a vertical resize over the Sessions/Details divider
-	}
-	sb := s.split.Bounds()
-	return s.split.Cursor(x-sb.X, y-sb.Y)
+	return s.ptr.Cursor(x, y) // a vertical resize over the Sessions/Details divider, a horizontal one over the panel's
 }
 
 // HandleRelease routes a button release to the grabbed widget and drops it.
 func (s *Scene) HandleRelease(x, y int) bool {
-	if s.dragTarget == nil {
-		return false
-	}
-	s.dragTarget.OnEvent(toolkit.Event{Kind: toolkit.EventMouseUp, X: x - s.dragBounds.X, Y: y - s.dragBounds.Y})
-	s.dragTarget = nil
-	return true
+	return s.ptr.Release(x, y)
 }
 
 func fillBG(buf []byte, c toolkit.RGBA) {
 	for i := 0; i+3 < len(buf); i += 4 {
 		buf[i], buf[i+1], buf[i+2], buf[i+3] = c.R, c.G, c.B, c.A
 	}
-}
-
-func inside(x, y int, r toolkit.Rect) bool {
-	return x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H
-}
-
-func local(e toolkit.Event, r toolkit.Rect) toolkit.Event {
-	e.X -= r.X
-	e.Y -= r.Y
-	return e
 }

@@ -8,7 +8,7 @@ require (
 	github.com/go-widgets/mvvm v0.15.0
 	github.com/go-widgets/mvvmtk v0.16.0
 	github.com/go-widgets/painter v0.17.0
-	github.com/go-widgets/toolkit v0.394.0
+	github.com/go-widgets/toolkit v0.395.2
 	github.com/grpc-transports/websocket v0.2.0
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/grpc v1.85.0

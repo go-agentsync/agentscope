@@ -307,11 +307,11 @@ func TestHelpers(t *testing.T) {
 	if buf[4] != 1 || buf[7] != 4 {
 		t.Error("fillBG")
 	}
-	r := toolkit.Rect{X: 1, Y: 1, W: 2, H: 2}
-	if !inside(1, 1, r) || inside(3, 1, r) || inside(0, 1, r) || inside(1, 3, r) {
-		t.Error("inside")
-	}
-	if e := local(toolkit.Event{X: 5, Y: 6}, r); e.X != 4 || e.Y != 5 {
-		t.Error("local")
-	}
+}
+
+// placed reports whether the layout gave w a place: a widget a box left out is
+// laid out in an empty rectangle.
+func placed(w toolkit.Widget) bool {
+	b := w.Bounds()
+	return b.W > 0 && b.H > 0
 }

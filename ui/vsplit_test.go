@@ -264,8 +264,9 @@ func TestAPaneAtItsMinimumHasNoRoomForTheFilterRows(t *testing.T) {
 	if s.vsplit.PaneSize(0) != PaneMinH || placed(s.stateDD) {
 		t.Fatalf("Sessions %d, filters shown %v", s.vsplit.PaneSize(0), placed(s.stateDD))
 	}
-	for _, w := range s.targets() {
-		if w == toolkit.Widget(s.stateDD) || w == toolkit.Widget(s.clearBtn) {
+	for _, w := range []toolkit.Widget{s.stateDD, s.clearBtn} {
+		b := w.Bounds()
+		if s.ptr.Press(b.X+b.W/2, b.Y+b.H/2, "") == w {
 			t.Fatal("a filter row that is not laid out takes a click")
 		}
 	}

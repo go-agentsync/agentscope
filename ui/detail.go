@@ -50,7 +50,7 @@ func contextRows(s model.Snapshot, sel string) []CtxRow {
 		}
 		rows := []CtxRow{ctxOf("session "+short, se.Context, w)}
 		for _, a := range se.Agents {
-			rows = append(rows, ctxOf(gaugeName(agentLabel(a)), a.Context, w))
+			rows = append(rows, ctxOf(gaugeName(agentLabel(a)), a.Context, s.WindowOfAgent(a)))
 		}
 		return rows
 	case strings.HasPrefix(sel, "node:"+agentPrefix):
@@ -58,7 +58,7 @@ func contextRows(s model.Snapshot, sel string) []CtxRow {
 		se, _ := s.SessionByShort(short)
 		for _, a := range se.Agents {
 			if a.ID == id {
-				return []CtxRow{ctxOf(gaugeName(agentLabel(a)), a.Context, w)}
+				return []CtxRow{ctxOf(gaugeName(agentLabel(a)), a.Context, s.WindowOfAgent(a))}
 			}
 		}
 	}
@@ -237,7 +237,7 @@ func agentDetail(s model.Snapshot, rest string) []string {
 			"spawn depth: " + strconv.Itoa(a.Depth), "spawned by session " + short,
 			"description: " + a.Description, "tool use: " + a.ToolUseID,
 		}
-		lines = append(lines, "context: "+contextText(a.Context, windowOf(s)))
+		lines = append(lines, "context: "+contextText(a.Context, s.WindowOfAgent(a)))
 		return append(lines, modelLines(s, a.Model, a.Models)...)
 	}
 	return []string{"sub-agent " + id + ": not in this snapshot"}

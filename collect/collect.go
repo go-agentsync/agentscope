@@ -195,6 +195,7 @@ func (c *Collector) Snapshot() model.Snapshot {
 		ActiveFor: c.opt.Active.String(), Horizon: c.opt.Horizon.String(),
 	}
 	snap.ContextWindow = CompactWindow(c.opt.ClaudeDir, osGetenv)
+	snap.AgentWindows = AgentWindows(c.opt.ClaudeDir)
 	st := &snap.Stats
 	anom := map[string]model.Anomaly{}
 	addAnom := func(kind, subject, detail string) {

@@ -33,6 +33,21 @@ type Snapshot struct {
 	// ContextWindow is the size, in tokens, at which Claude Code compacts a
 	// context: what a session's Context is measured against.
 	ContextWindow int64 `json:"contextWindow,omitempty"`
+	// AgentWindows are the compaction windows of the agent types whose
+	// definition names one, by type; a sub-agent of another type uses ContextWindow.
+	AgentWindows map[string]int64 `json:"agentWindows,omitempty"`
+}
+
+// WindowOfAgent is the window a sub-agent's Context is measured against: its
+// type's, else the session's (ContextWindow, or the default).
+func (s Snapshot) WindowOfAgent(a Agent) int64 {
+	if w := s.AgentWindows[a.Type]; w > 0 {
+		return w
+	}
+	if s.ContextWindow > 0 {
+		return s.ContextWindow
+	}
+	return DefaultCompactWindow
 }
 
 // Session is one Claude Code session, with its sub-agents.

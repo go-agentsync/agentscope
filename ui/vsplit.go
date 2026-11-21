@@ -69,16 +69,3 @@ func (s *Scene) stack(top, bottom toolkit.Widget) *toolkit.Splitter {
 	s.vsplit = sp
 	return sp
 }
-
-// grabDivider gives a press at (x, y) to sp when it is on its divider.
-func (s *Scene) grabDivider(sp *toolkit.Splitter, x, y int) bool {
-	hr, ok := sp.HandleRect(0)
-	if !ok || !inside(x, y, hr) {
-		return false
-	}
-	sb := sp.Bounds()
-	s.dragTarget, s.dragBounds, s.keyTarget = sp, sb, sp
-	s.search.SetFocused(false)
-	sp.OnEvent(local(toolkit.Event{Kind: toolkit.EventClick, X: x, Y: y}, sb))
-	return true
-}

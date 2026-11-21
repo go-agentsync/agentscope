@@ -73,11 +73,10 @@ func TestShortWindowDropsTheModelRowsNotTheFilters(t *testing.T) {
 	if len(placedChecks(s)) != 0 {
 		t.Fatalf("%d check boxes shown with no room", len(placedChecks(s)))
 	}
-	for _, w := range s.targets() {
-		for _, c := range s.modelChecks {
-			if w == toolkit.Widget(c) {
-				t.Fatal("a check box that was not laid out takes clicks")
-			}
+	for _, c := range s.modelChecks {
+		b := c.Bounds()
+		if s.ptr.Press(b.X+b.W/2, b.Y+b.H/2, "") == toolkit.Widget(c) {
+			t.Fatal("a check box that was not laid out takes clicks")
 		}
 	}
 	if got := outside(s); len(got) != 0 {

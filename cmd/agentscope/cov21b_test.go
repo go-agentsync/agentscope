@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"runtime"
 	"testing"
 )
 
@@ -27,11 +28,12 @@ func TestUsageDirsFailOnEitherDirectoryAlone(t *testing.T) {
 // Without a home directory the defaults cannot be built, and that is the error
 // the options report, not flags laid over an empty set.
 func TestOptionsReportAMissingHomeDirectory(t *testing.T) {
+	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
+		t.Skip("the home directory comes from another variable")
+	}
 	t.Setenv("HOME", "")
-	t.Setenv("USERPROFILE", "")
-	t.Setenv("home", "")
 	c := &common{active: 1, horizon: 1}
 	if _, err := c.options(); err == nil {
-		t.Skip("this platform finds a home directory anyway")
+		t.Fatal("no home directory is no error")
 	}
 }

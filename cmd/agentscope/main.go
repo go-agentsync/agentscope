@@ -29,9 +29,12 @@ func main() {
 	}
 }
 
+// readBuildInfo is replaced by a test: a test binary has no module version.
+var readBuildInfo = debug.ReadBuildInfo
+
 // version is the module version, "devel" outside a release build.
 func version() string {
-	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+	if bi, ok := readBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
 		return bi.Main.Version
 	}
 	return "devel"

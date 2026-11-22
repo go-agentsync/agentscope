@@ -67,7 +67,7 @@ no Go toolchain.`,
 					return err
 				}
 			}
-			if dir, err = filepath.Abs(dir); err != nil {
+			if dir, err = absPath(dir); err != nil {
 				return err
 			}
 			if _, err := os.Stat(filepath.Join(dir, "index.html")); err != nil {
@@ -106,8 +106,10 @@ no Go toolchain.`,
 	return cmd
 }
 
-// userCacheDir and userConfigDir are replaced by a test that needs them to fail.
+// userCacheDir, userConfigDir and absPath are replaced by a test that needs them
+// to fail.
 var (
+	absPath       = filepath.Abs
 	userCacheDir  = os.UserCacheDir
 	userConfigDir = os.UserConfigDir
 )

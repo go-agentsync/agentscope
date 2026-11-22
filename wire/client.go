@@ -13,7 +13,14 @@ import (
 
 // Client is the client side of the service over a WebSocket. It compiles and
 // runs the same natively and under GOOS=js GOARCH=wasm.
-type Client struct{ cc *grpc.ClientConn }
+type Client struct{ cc conn }
+
+// conn is what Client uses of a *grpc.ClientConn; a test substitutes a stream
+// whose sends fail, which a live connection does not do on demand.
+type conn interface {
+	grpc.ClientConnInterface
+	Close() error
+}
 
 // Dial connects to the service at wsURL (ws:// or wss://). The connection is
 // lazy: the first call opens it.

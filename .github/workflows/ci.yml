@@ -53,6 +53,18 @@ jobs:
       # package with no statements in the profile is an error, not a pass.
       - name: coverage gate
         run: go run ./internal/covercheck -profile coverage.out -min total=90 -min ui=100 -min model=100 -min collect=90 -min webui=85 -min cmd/agentscope=90 -min quota=95 -min usage=95 -min guard=95
+      # `agentscope stamp` runs on every session's hook, so it and every in-module
+      # package it imports (go list -deps ./cmd/agentscope) has every block entered
+      # by the suite. A percentage can sit at 100 on a counter that rounds; a block
+      # list cannot. Merged over ./..., so a package may be entered from another's tests.
+      - name: coverage, every block entered
+        run: |
+          set -eu
+          M=github.com/go-agentsync/agentscope
+          PKGS="$M/accounts,$M/collect,$M/guard,$M/model,$M/quota,$M/serve,$M/usage,$M/webui,$M/wire,$M/cmd/agentscope"
+          go test -timeout 10m -coverpkg="$PKGS" -coverprofile=cover.out ./...
+          go install github.com/go-fleettools/fleettools/cmd/covblocks@v0.157.0
+          "$(go env GOPATH)/bin/covblocks" --max 0 cover.out
       # The machine this runs on is a Mac and one lane is Windows: compile them.
       - name: vet for darwin on arm64
         run: GOOS=darwin GOARCH=arm64 go vet ./...

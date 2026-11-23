@@ -105,13 +105,24 @@ func (a *Aliases) Set(key, name string) error {
 	return nil
 }
 
+// tempFile is the part of *os.File that writeAliases uses; a test substitutes
+// one whose steps fail, which a real file does not do on demand.
+type tempFile interface {
+	Name() string
+	Chmod(os.FileMode) error
+	WriteString(string) (int, error)
+	Close() error
+}
+
+var createTemp = func(dir, pattern string) (tempFile, error) { return os.CreateTemp(dir, pattern) }
+
 // writeAliases replaces the file atomically: a temporary file in the same
 // directory, mode 0600, renamed over it.
 func writeAliases(path string, m map[string]string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".accounts-*.toml")
+	tmp, err := createTemp(filepath.Dir(path), ".accounts-*.toml")
 	if err != nil {
 		return err
 	}

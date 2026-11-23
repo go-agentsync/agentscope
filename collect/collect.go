@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -42,6 +43,10 @@ type Options struct {
 	MaxAgents     int           // sub-agents listed per session (newest first)
 	Now           func() time.Time
 }
+
+// entryInfo is DirEntry.Info, which fails when the entry vanishes between the
+// directory read and the stat; a test makes it fail on demand.
+var entryInfo = func(e fs.DirEntry) (fs.FileInfo, error) { return e.Info() }
 
 // DefaultOptions are the settings of `agentscope serve` without flags.
 func DefaultOptions() (Options, error) {
@@ -228,7 +233,7 @@ func (c *Collector) Snapshot() model.Snapshot {
 			if !ok || !isUUID(id) {
 				continue
 			}
-			info, err := e.Info()
+			info, err := entryInfo(e)
 			if err != nil {
 				continue
 			}
@@ -539,7 +544,7 @@ func modelsOf(ts *tstate, horizon time.Time) (string, []model.ModelSeen) {
 }
 
 func (c *Collector) meta(path string, e os.DirEntry, st *model.Stats) (agentMeta, bool) {
-	info, err := e.Info()
+	info, err := entryInfo(e)
 	if err != nil {
 		return agentMeta{}, false
 	}

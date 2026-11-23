@@ -100,9 +100,16 @@ func readGoEnv(ctx context.Context, goBin string) (goEnv, error) {
 	return e, nil
 }
 
+// readBuildInfo and userCacheDir are replaced by a test: a test binary has no
+// module version, and the user cache directory does not fail on demand.
+var (
+	readBuildInfo = debug.ReadBuildInfo
+	userCacheDir  = os.UserCacheDir
+)
+
 // binaryVersion is the module version this binary was built from, or "".
 func binaryVersion() string {
-	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Path == ModulePath && bi.Main.Version != "(devel)" {
+	if bi, ok := readBuildInfo(); ok && bi.Main.Path == ModulePath && bi.Main.Version != "(devel)" {
 		return bi.Main.Version
 	}
 	return ""
@@ -279,7 +286,7 @@ func Ensure(ctx context.Context, o Options) (string, error) {
 	}
 	cache := o.CacheDir
 	if cache == "" {
-		base, err := os.UserCacheDir()
+		base, err := userCacheDir()
 		if err != nil {
 			return "", fmt.Errorf("no user cache directory (%v): pass --cache-dir, or serve a UI with --web DIR", err)
 		}

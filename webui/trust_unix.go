@@ -10,20 +10,27 @@ import (
 	"syscall"
 )
 
+// getuid and statFile are replaced by a test: no file can be made to belong to
+// a stranger without being root, nor to carry no owner at all.
+var (
+	getuid   = os.Getuid
+	statFile = os.Stat
+)
+
 // checkTrusted refuses a source tree a stranger could have written to: root
 // and, when it is inside the module cache, every directory above it up to and
 // including the module cache must be owned by the current user or by root, and
 // not writable by group or others. (Module cache directories are 0555.) For a
 // checkout only its root is checked: the rest is the developer's own tree.
 func checkTrusted(root, modcache string) error {
-	me := uint32(os.Getuid())
+	me := uint32(getuid())
 	within := false
 	if modcache != "" {
 		rel, err := filepath.Rel(modcache, root)
 		within = err == nil && rel != "." && !strings.HasPrefix(rel, "..")
 	}
 	for d := root; ; d = filepath.Dir(d) {
-		st, err := os.Stat(d)
+		st, err := statFile(d)
 		if err != nil {
 			return err
 		}

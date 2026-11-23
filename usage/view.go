@@ -362,6 +362,9 @@ type Engine struct {
 // ScanEvery is how often transcripts are scanned for new tokens.
 const ScanEvery = time.Minute
 
+// scanEvery is the interval Run ticks at; a test shortens it to see a tick.
+var scanEvery = ScanEvery
+
 // NewEngine reads transcripts under claudeDir/projects, caches sums in
 // cacheDir and records readings in configDir. The signed-in account is read from
 // the .claude.json next to claudeDir.
@@ -513,7 +516,7 @@ func (e *Engine) Guardrails() *model.Guardrails {
 // Run steps now and then every ScanEvery until ctx ends.
 func (e *Engine) Run(ctx context.Context) {
 	e.Step(ctx, e.now())
-	t := time.NewTicker(ScanEvery)
+	t := time.NewTicker(scanEvery)
 	defer t.Stop()
 	for {
 		select {

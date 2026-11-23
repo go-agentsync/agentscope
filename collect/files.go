@@ -46,7 +46,7 @@ func (c *Collector) readLeases(now time.Time, st *model.Stats, addAnom func(k, s
 		}
 		p := filepath.Join(dir, e.Name())
 		seen[p] = true
-		info, err := e.Info()
+		info, err := entryInfo(e)
 		if err != nil {
 			continue
 		}
@@ -120,7 +120,7 @@ func (c *Collector) readTells(now time.Time, st *model.Stats) []lease.Message {
 		}
 		p := filepath.Join(dir, e.Name())
 		seen[p] = true
-		info, err := e.Info()
+		info, err := entryInfo(e)
 		if err != nil {
 			continue
 		}
@@ -195,7 +195,7 @@ func (c *Collector) readRecords(st *model.Stats) map[string]recInfo {
 		}
 		p := filepath.Join(dir, e.Name())
 		seen[p] = true
-		info, err := e.Info()
+		info, err := entryInfo(e)
 		if err != nil {
 			continue
 		}

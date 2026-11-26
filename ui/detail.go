@@ -27,7 +27,7 @@ func (vm *ViewModel) refreshDetail() {
 func capLines(lines []string) []string {
 	if len(lines) > maxDetailLines {
 		more := len(lines) - maxDetailLines
-		lines = append(lines[:maxDetailLines:maxDetailLines], "... "+strconv.Itoa(more)+" more line(s)")
+		lines = append(lines[:maxDetailLines:maxDetailLines], Tf("d.moreLines", more))
 	}
 	return lines
 }
@@ -46,7 +46,7 @@ func contextRows(s model.Snapshot, sel string) []CtxRow {
 		if !ok {
 			return nil
 		}
-		rows := []CtxRow{ctxOf("session "+short, se.Context, w)}
+		rows := []CtxRow{ctxOf(Tf("d.session", short), se.Context, w)}
 		for _, a := range se.Agents {
 			rows = append(rows, ctxOf(gaugeName(agentLabel(a)), a.Context, s.WindowOfAgent(a)))
 		}
@@ -67,7 +67,7 @@ func contextRows(s model.Snapshot, sel string) []CtxRow {
 func agentLabel(a model.Agent) string {
 	t := a.Type
 	if t == "" {
-		t = "agent"
+		t = T("d.agent")
 	}
 	return t + " " + a.ID
 }
@@ -87,7 +87,7 @@ func detailLines(s model.Snapshot, sel string) []string {
 	case strings.HasPrefix(sel, "node:"+morePrefix):
 		short := strings.TrimPrefix(sel, "node:"+morePrefix)
 		se, _ := s.SessionByShort(short)
-		return []string{"sub-agents of " + short + " not drawn", "listed " + strconv.Itoa(len(se.Agents)) + ", drawn " + strconv.Itoa(MaxGraphAgents), "(select the session for the newest)"}
+		return []string{Tf("d.moreHead", short), Tf("d.moreCount", len(se.Agents), MaxGraphAgents), T("d.moreHint")}
 	case strings.HasPrefix(sel, "edge:"):
 		return edgeDetail(s, strings.TrimPrefix(sel, "edge:"))
 	}
@@ -98,18 +98,18 @@ func detailLines(s model.Snapshot, sel string) []string {
 // id, and, when more than one was seen, every model newest first. A missing or
 // unrecognised id is shown as "?" with the raw id; nothing is guessed.
 func modelLines(s model.Snapshot, latest string, seen []model.ModelSeen) []string {
-	lines := []string{"model: " + model.ModelLabel(latest)}
+	lines := []string{Tf("d.model", model.ModelLabel(latest))}
 	if len(seen) > 1 {
-		lines = append(lines, "models seen (newest first):")
+		lines = append(lines, T("d.modelsSeen"))
 		for _, m := range seen {
-			lines = append(lines, "  "+model.ModelLabel(m.ID)+", last "+ago(s.At, m.Last)+" ago")
+			lines = append(lines, Tf("d.modelSeen", model.ModelLabel(m.ID), ago(s.At, m.Last)))
 		}
 	}
 	return lines
 }
 
 func anomalyLines(s model.Snapshot) []string {
-	lines := []string{"ANOMALIES (" + strconv.Itoa(len(s.Anomalies)) + "): shown, not hidden"}
+	lines := []string{Tf("d.anom", len(s.Anomalies))}
 	for _, a := range s.Anomalies {
 		l := a.Kind + ": " + a.Subject
 		if a.Detail != "" {
@@ -122,70 +122,73 @@ func anomalyLines(s model.Snapshot) []string {
 		"",
 		// Only what holds still between passes: a per-pass byte count or timing here
 		// would repaint the panel on every snapshot of an idle network.
-		"read: "+strconv.Itoa(st.TranscriptsSeen)+" transcripts, "+
-			strconv.Itoa(st.LeasesRead)+" leases ("+strconv.Itoa(st.LeasesTorn)+" torn), "+strconv.Itoa(st.TellsRead)+" tells ("+strconv.Itoa(st.TellsDropped)+" outside the window)",
-		"expired leases beyond the horizon, not listed: "+strconv.Itoa(st.ExpiredNotListed))
+		Tf("d.read", st.TranscriptsSeen, st.LeasesRead, st.LeasesTorn, st.TellsRead, st.TellsDropped),
+		Tf("d.expiredNot", st.ExpiredNotListed))
 	return lines
 }
 
 func sessionDetail(s model.Snapshot, short string) []string {
 	se, ok := s.SessionByShort(short)
 	if !ok {
-		return []string{"session " + short + ": not in this snapshot"}
+		return []string{Tf("d.sessNotIn", short)}
 	}
-	state := "idle"
+	state := T("d.stIdle")
 	if se.Active {
-		state = "ACTIVE (written within " + s.ActiveFor + ")"
+		state = Tf("d.stActive", s.ActiveFor)
 	}
 	if !se.HasTranscript {
-		state = "no transcript found"
+		state = T("d.stNoTr")
 	}
 	lines := []string{
-		"session " + se.ID,
-		"state: " + state + ", last activity " + ago(s.At, se.LastActivity) + " ago",
-		"task: " + s.Task(se),
+		Tf("d.session", se.ID),
+		Tf("d.state", state, ago(s.At, se.LastActivity)),
+		Tf("d.task", s.Task(se)),
 	}
 	add := func(k, v string) {
 		if v != "" {
-			lines = append(lines, k+": "+v)
+			lines = append(lines, Tf("d.kv", T(k), v))
 		}
 	}
 	lines = append(lines, modelLines(s, se.Model, se.Models)...)
-	lines = append(lines, "context: "+contextText(se.Context, windowOf(s)))
-	add("title", se.Title)
-	add("slug", se.Slug)
-	add("cwd", se.Cwd)
-	add("cwd repo", se.CwdRepo)
-	add("branch", se.Branch)
-	add("pull request", se.PR)
-	add("project", se.Project)
-	lines = append(lines, "sent "+strconv.Itoa(se.Sent)+" SendMessage call(s) in the observed window; "+strconv.Itoa(se.MemAdds)+" memory entries recorded")
+	lines = append(lines, Tf("d.context", contextText(se.Context, windowOf(s))))
+	add("d.k.title", se.Title)
+	add("d.k.slug", se.Slug)
+	add("d.k.cwd", se.Cwd)
+	add("d.k.cwdrepo", se.CwdRepo)
+	add("d.k.branch", se.Branch)
+	add("d.k.pr", se.PR)
+	add("d.k.project", se.Project)
+	lines = append(lines, Tf("d.sent", se.Sent, se.MemAdds))
 	ls := s.LeasesOf(se.ID)
-	lines = append(lines, "leases ("+strconv.Itoa(len(ls))+"):")
+	lines = append(lines, Tf("d.leases", len(ls)))
 	for _, l := range ls {
-		st := "held until " + l.Expires.Format("15:04")
-		if l.Expired {
-			st = "expired " + ago(s.At, l.Expires) + " ago"
-		}
-		lines = append(lines, "  "+l.Repo+" ["+st+"] "+l.Note)
+		lines = append(lines, "  "+l.Repo+" ["+leaseState(s, l)+"] "+l.Note)
 	}
-	lines = append(lines, "sub-agents ("+strconv.Itoa(len(se.Agents))+"):")
+	lines = append(lines, Tf("d.subAgents", len(se.Agents)))
 	for _, a := range se.Agents {
 		act := ago(s.At, a.LastActivity)
 		if a.Active {
-			act = "ACTIVE"
+			act = T("d.active")
 		}
 		lines = append(lines, "  "+a.Type+" ["+act+", "+modelShort(a.Model)+"] "+a.Description)
 	}
 	for _, t := range s.Tells {
 		switch {
 		case model.ShortID(t.From) == short:
-			lines = append(lines, "tell sent to "+t.Target+": "+t.Text)
+			lines = append(lines, Tf("d.tellSent", t.Target, t.Text))
 		case t.TargetKind == model.TargetSession && t.Target == short:
-			lines = append(lines, "tell from "+model.ShortID(t.From)+": "+t.Text)
+			lines = append(lines, Tf("d.tellFrom", model.ShortID(t.From), t.Text))
 		}
 	}
 	return lines
+}
+
+// leaseState says until when a lease is held, or since when it has expired.
+func leaseState(s model.Snapshot, l model.Lease) string {
+	if l.Expired {
+		return Tf("d.expiredAgo", ago(s.At, l.Expires))
+	}
+	return Tf("d.heldUntil", l.Expires.Format("15:04"))
 }
 
 func agentDetail(s model.Snapshot, rest string) []string {
@@ -195,19 +198,19 @@ func agentDetail(s model.Snapshot, rest string) []string {
 		if a.ID != id {
 			continue
 		}
-		act := "idle, last " + ago(s.At, a.LastActivity) + " ago"
+		act := Tf("d.idleLast", ago(s.At, a.LastActivity))
 		if a.Active {
-			act = "ACTIVE"
+			act = T("d.active")
 		}
 		lines := []string{
-			"sub-agent " + a.ID, "type: " + a.Type, "state: " + act,
-			"spawn depth: " + strconv.Itoa(a.Depth), "spawned by session " + short,
-			"description: " + a.Description, "tool use: " + a.ToolUseID,
+			Tf("d.subAgent", a.ID), Tf("d.type", a.Type), Tf("d.stateOnly", act),
+			Tf("d.depth", a.Depth), Tf("d.spawnedBy", short),
+			Tf("d.desc", a.Description), Tf("d.toolUse", a.ToolUseID),
 		}
-		lines = append(lines, "context: "+contextText(a.Context, s.WindowOfAgent(a)))
+		lines = append(lines, Tf("d.context", contextText(a.Context, s.WindowOfAgent(a))))
 		return append(lines, modelLines(s, a.Model, a.Models)...)
 	}
-	return []string{"sub-agent " + id + ": not in this snapshot"}
+	return []string{Tf("d.agentNotIn", id)}
 }
 
 // orgDetail lists the repositories nobody holds under one org, in full.
@@ -231,33 +234,29 @@ func orgDetail(s model.Snapshot, org string) []string {
 			repos = append(repos, l.Repo)
 		}
 	}
-	lines := []string{"org " + org + ": " + strconv.Itoa(len(repos)) + " repositories nobody holds", "(Enter or a second click expands it; Escape collapses)"}
+	lines := []string{Tf("d.orgHead", org, len(repos)), T("d.orgHint")}
 	return append(lines, repos...)
 }
 
 func repoDetail(s model.Snapshot, key string) []string {
-	lines := []string{"repository " + key}
+	lines := []string{Tf("d.repo", key)}
 	n := 0
 	for _, l := range s.Leases {
 		if l.Repo != key {
 			continue
 		}
 		if n == 0 {
-			lines = append(lines, "kind: "+string(l.Kind))
+			lines = append(lines, Tf("d.kind", string(l.Kind)))
 			if l.Path != "" {
-				lines = append(lines, "clone: "+l.Path)
+				lines = append(lines, Tf("d.clone", l.Path))
 			}
 		}
 		n++
-		st := "held until " + l.Expires.Format("15:04")
-		if l.Expired {
-			st = "expired " + ago(s.At, l.Expires) + " ago"
-		}
-		lines = append(lines, "lease by "+model.ShortID(l.Owner)+" ["+st+"] "+l.Note)
+		lines = append(lines, Tf("d.leaseBy", model.ShortID(l.Owner), leaseState(s, l), l.Note))
 	}
 	for _, t := range s.Tells {
 		if t.TargetKind == model.TargetResource && t.Target == key {
-			lines = append(lines, "tell from "+model.ShortID(t.From)+": "+t.Text)
+			lines = append(lines, Tf("d.tellFrom", model.ShortID(t.From), t.Text))
 		}
 	}
 	return lines
@@ -268,20 +267,20 @@ func edgeDetail(s model.Snapshot, id string) []string {
 	case strings.HasPrefix(id, tellPrefix):
 		i, err := strconv.Atoi(strings.TrimPrefix(id, tellPrefix))
 		if err != nil || i < 0 || i >= len(s.Tells) {
-			return []string{"tell: not in this snapshot"}
+			return []string{T("d.tellNotIn")}
 		}
 		t := s.Tells[i]
-		return []string{"tell " + model.ShortID(t.From) + " -> " + t.Target + " (" + string(t.TargetKind) + ")", "at " + t.At.Format("2006-01-02 15:04:05"), t.Text}
+		return []string{Tf("d.tellEdge", model.ShortID(t.From), t.Target, string(t.TargetKind)), Tf("d.at", t.At.Format("2006-01-02 15:04:05")), t.Text}
 	case strings.HasPrefix(id, leasePrefix):
 		owner, key, _ := strings.Cut(strings.TrimPrefix(id, leasePrefix), ":")
 		for _, l := range s.Leases {
 			if model.ShortID(l.Owner) == owner && l.Repo == key {
-				return []string{"lease " + key + " held by " + owner, "acquired " + l.Acquired.Format("2006-01-02 15:04"), "expires " + l.Expires.Format("2006-01-02 15:04"), "note: " + l.Note}
+				return []string{Tf("d.leaseEdge", key, owner), Tf("d.acquired", l.Acquired.Format("2006-01-02 15:04")), Tf("d.expires", l.Expires.Format("2006-01-02 15:04")), Tf("d.note", l.Note)}
 			}
 		}
-		return []string{"lease: not in this snapshot"}
+		return []string{T("d.leaseNotIn")}
 	case strings.HasPrefix(id, spawnPrefix):
 		return agentDetail(s, strings.TrimPrefix(id, spawnPrefix+agentPrefix))
 	}
-	return []string{"edge " + id}
+	return []string{Tf("d.edge", id)}
 }

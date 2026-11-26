@@ -78,7 +78,7 @@ func TestHandlersRefuseUndecodableRequestsAndHonourInterceptors(t *testing.T) {
 			t.Errorf("%s through an interceptor: %v %v", m.MethodName, out, err)
 		}
 	}
-	if len(names) != 3 {
+	if len(names) != 4 {
 		t.Fatalf("methods %v", names)
 	}
 	if err := r.desc.Streams[0].Handler(sc, failingServerStream{}); !errors.Is(err, errBoom) {

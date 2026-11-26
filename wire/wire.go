@@ -33,7 +33,16 @@ const (
 	methodWatch    = "/" + ServiceName + "/Watch"
 	methodRename   = "/" + ServiceName + "/Rename"
 	methodSetColor = "/" + ServiceName + "/SetColor"
+	methodSetPrefs = "/" + ServiceName + "/SetPrefs"
 )
+
+// SetPrefsRequest asks the server to keep the viewer's theme ("light", "dark",
+// "system" or "") and language (a tag or "" for automatic): a write to
+// settings.toml, by the serve process, which refuses anything else.
+type SetPrefsRequest struct {
+	Theme string `json:"theme"`
+	Lang  string `json:"lang"`
+}
 
 // SetColorRequest asks the server to give the account with the key a colour
 // (Color "" restores the automatic one): a write to account-colors.toml, by the
@@ -92,6 +101,7 @@ type Scope interface {
 	Watch(ctx context.Context, send func(model.Snapshot) error) error
 	Rename(ctx context.Context, key, name string) error
 	SetColor(ctx context.Context, key, color string) error
+	SetPrefs(ctx context.Context, theme, lang string) error
 }
 
 // Register registers s on gs.
@@ -130,6 +140,22 @@ func Register(gs grpc.ServiceRegistrar, s Scope) {
 					return call(ctx, &in)
 				}
 				return ic(ctx, &in, &grpc.UnaryServerInfo{Server: srv, FullMethod: methodSetColor}, call)
+			},
+		}, {
+			MethodName: "SetPrefs",
+			Handler: func(srv any, ctx context.Context, dec func(any) error, ic grpc.UnaryServerInterceptor) (any, error) {
+				var in SetPrefsRequest
+				if err := dec(&in); err != nil {
+					return nil, err
+				}
+				call := func(ctx context.Context, req any) (any, error) {
+					r := req.(*SetPrefsRequest)
+					return &Empty{}, srv.(Scope).SetPrefs(ctx, r.Theme, r.Lang)
+				}
+				if ic == nil {
+					return call(ctx, &in)
+				}
+				return ic(ctx, &in, &grpc.UnaryServerInfo{Server: srv, FullMethod: methodSetPrefs}, call)
 			},
 		}, {
 			MethodName: "Snapshot",

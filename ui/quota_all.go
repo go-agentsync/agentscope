@@ -122,7 +122,7 @@ func accountInk(a model.AccountUsage, i int, auto []toolkit.RGBA) toolkit.RGBA {
 // its 1-based position in u.Accounts) or of all of them (sel 0).
 func buildQuota(u *model.Usage, sel, span, kind int, dark bool) quotaView {
 	if u == nil {
-		return quotaView{Notes: "reading the transcripts..."}
+		return quotaView{Notes: T("q.reading")}
 	}
 	var v quotaView
 	if sel <= 0 || sel > len(u.Accounts) {
@@ -183,13 +183,13 @@ func buildAll(u *model.Usage, span, kind int, dark bool) quotaView {
 				continue
 			}
 			if !w.Available {
-				notes = append(notes, accountName(a)+": "+w.Label+" not available")
+				notes = append(notes, Tf("q.acctUnavail", accountName(a), w.Label))
 				continue
 			}
 			target.Overlays = append(target.Overlays, toolkit.TimeLine{Name: accountTag(a.Key, "", "", a.Alias), Ink: ink, Points: pointsOf(w.History, start, end)})
 			if span != SpanWeeks {
 				if w.ResetsAt >= start && w.ResetsAt <= end {
-					target.Markers = append(target.Markers, toolkit.TimeMarker{At: w.ResetsAt, Label: markerLabel(a, " reset"), Ink: ink})
+					target.Markers = append(target.Markers, toolkit.TimeMarker{At: w.ResetsAt, Label: markerLabel(a, T("q.resetSuffix")), Ink: ink})
 				}
 				continue
 			}
@@ -207,13 +207,13 @@ func buildAll(u *model.Usage, span, kind int, dark bool) quotaView {
 		}
 	}
 	if len(target.Overlays) == 0 {
-		notes = append(notes, "no account has a recorded "+label+" window")
+		notes = append(notes, Tf("q.noWindow", label))
 	}
 
 	if u.All.UnattributedOut > 0 || u.All.UnattributedCache > 0 {
-		notes = append(notes, fmt.Sprintf("unattributed (no account recorded before the call), last 28 days: %s output, %s cache-read", Tokens(u.All.UnattributedOut), Tokens(u.All.UnattributedCache)))
+		notes = append(notes, Tf("q.unattributed", Tokens(u.All.UnattributedOut), Tokens(u.All.UnattributedCache)))
 	}
-	notes = append(notes, fmt.Sprintf("capacity left: %.2f account-weeks (%d of %d accounts counted)", u.Capacity.AccountWeeks, u.Capacity.Counted, len(u.Capacity.Items)))
+	notes = append(notes, Tf("q.capLeft", u.Capacity.AccountWeeks, u.Capacity.Counted, len(u.Capacity.Items)))
 	if u.QuotaErr != "" {
 		notes = append(notes, "aiquota: "+u.QuotaErr)
 	}

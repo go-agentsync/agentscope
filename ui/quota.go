@@ -120,19 +120,19 @@ func buildAccountView(a model.AccountUsage, families []string, quotaErr string, 
 				continue
 			}
 			if !w.Available {
-				notes = append(notes, w.Label+": not available")
+				notes = append(notes, Tf("q.unavail", w.Label))
 				continue
 			}
 			pts := pointsOf(w.History, start, end)
 			v.Official.Overlays = append(v.Official.Overlays, toolkit.TimeLine{Name: w.Label, Ink: cols[n%len(cols)], Points: pts})
 			n++
 			if w.ResetsAt >= start && w.ResetsAt <= end {
-				v.Official.Markers = append(v.Official.Markers, toolkit.TimeMarker{At: w.ResetsAt, Label: "reset " + fmtT(w.ResetsAt), Ink: cols[1]})
+				v.Official.Markers = append(v.Official.Markers, toolkit.TimeMarker{At: w.ResetsAt, Label: Tf("q.resetAt", fmtT(w.ResetsAt)), Ink: cols[1]})
 			}
 		}
 		for _, w := range a.Windows {
 			if w.Available && (w.Label == quota.LabelSession) == (span == SpanShort) && len(w.History) < 2 {
-				notes = append(notes, "recorded history of "+w.Label+": "+recordingSince(a.RecordingSince)+" (a line needs two readings)")
+				notes = append(notes, Tf("q.history", w.Label, recordingSince(a.RecordingSince)))
 			}
 		}
 		v.Out = barData{Layers: a.Short.Out, TimeMin: start, TimeMax: end, FormatTime: fmtT}
@@ -149,9 +149,9 @@ func buildAccountView(a model.AccountUsage, families []string, quotaErr string, 
 	}
 	switch a.ResetSource {
 	case "recorded":
-		notes = append(notes, "weeks aligned on the last recorded reset")
+		notes = append(notes, T("q.aligned"))
 	case "":
-		notes = append(notes, "no weekly reset known: the weeks end now")
+		notes = append(notes, T("q.noReset"))
 	}
 	v.Notes = strings.Join(notes, "  |  ")
 	return v
@@ -188,9 +188,9 @@ func (v *quotaView) buildWeeks(a model.AccountUsage, families []string, kind int
 	v.WeekBars = barData{Layers: layers, TimeMin: first, TimeMax: last, FormatTime: date}
 
 	// Cumulative lines: this week and the three before it, over days 0 to 7.
-	v.Cum = lineData{TimeMin: 0, TimeMax: weekSecs, FormatTime: func(at int64) string { return fmt.Sprintf("day %d", at/day) }}
+	v.Cum = lineData{TimeMin: 0, TimeMax: weekSecs, FormatTime: func(at int64) string { return Tf("q.day", at/day) }}
 	var peak float64
-	names := []string{"3 weeks ago", "2 weeks ago", "last week", "this week"}
+	names := []string{T("q.w3"), T("q.w2"), T("q.w1"), T("q.w0")}
 	for k, w := range a.Weeks {
 		cum := w.CumOut
 		if kind == KindCacheRead {
@@ -203,7 +203,7 @@ func (v *quotaView) buildWeeks(a model.AccountUsage, families []string, kind int
 		}
 		name := names[(len(names)-len(a.Weeks)+k+len(names))%len(names)]
 		if w.InProgress {
-			name = "this week (in progress)"
+			name = T("q.w0p")
 		}
 		v.Cum.Overlays = append(v.Cum.Overlays, toolkit.TimeLine{Name: name, Ink: cols[(len(a.Weeks)-1-k)%len(cols)], Points: pts})
 	}
@@ -222,26 +222,26 @@ func (v *quotaView) buildWeeks(a model.AccountUsage, families []string, kind int
 		v.WeekPct.Markers = append(v.WeekPct.Markers, toolkit.TimeMarker{At: w.Start, Ink: cols[1]})
 	}
 	if len(pts) < 2 {
-		*notes = append(*notes, "official weekly %: "+recordingSince(a.RecordingSince))
+		*notes = append(*notes, Tf("q.weeklyNote", recordingSince(a.RecordingSince)))
 	}
 	var per []string
 	for _, w := range a.Weeks {
-		s := "not recorded"
+		s := T("q.notRecorded")
 		if w.Recorded {
 			s = fmt.Sprintf("%.0f %%", w.Percent)
 		}
 		if w.InProgress {
-			s += " (in progress)"
+			s += T("q.inProgress")
 		}
 		per = append(per, s)
 	}
-	*notes = append(*notes, "official weekly % per week, oldest first: "+strings.Join(per, ", "))
+	*notes = append(*notes, Tf("q.perWeek", strings.Join(per, ", ")))
 }
 
 // recordingSince says since when the official readings are recorded.
 func recordingSince(at int64) string {
 	if at > 0 {
-		return "recording since " + date(at)
+		return Tf("q.since", date(at))
 	}
-	return "no history recorded yet"
+	return T("q.noHistory")
 }

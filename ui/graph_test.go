@@ -24,7 +24,7 @@ func TestBuildGraphStructure(t *testing.T) {
 		clusters[c.ID] = c.Label
 	}
 	// A held repo names the cluster; a cwd-derived one is marked "(cwd)".
-	if clusters["aaaaaaaa"] != "aaaaaaaa o/a" || clusters["bbbbbbbb"] != "bbbbbbbb o/b (cwd)" || clusters["cccccccc"] != "cccccccc" || clusters[reposCluster] != repoClusterLabel {
+	if clusters["aaaaaaaa"] != "aaaaaaaa o/a" || clusters["bbbbbbbb"] != "bbbbbbbb o/b (cwd)" || clusters["cccccccc"] != "cccccccc" || clusters[reposCluster] != repoClusterLabel() {
 		t.Errorf("clusters %v", clusters)
 	}
 	type nd struct{ cluster, cat, label string }

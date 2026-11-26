@@ -45,7 +45,7 @@ const (
 )
 
 // repoClusterLabel is the label of the cluster of repositories nobody holds.
-const repoClusterLabel = "other repositories"
+func repoClusterLabel() string { return T("g.otherRepos") }
 
 // candidate is an edge the graph MAY draw, with what decides whether it is.
 type candidate struct {
@@ -133,12 +133,12 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 	}
 
 	for _, se := range sessions {
-		cat := "session"
+		cat := T("g.session")
 		if !se.Active {
-			cat = "idle session"
+			cat = T("g.idleSession")
 		}
 		if !se.HasTranscript {
-			cat = "no transcript"
+			cat = T("g.noTranscript")
 		}
 		label := se.Short
 		if r := sessionRepo(s, se); r != "" {
@@ -149,14 +149,14 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 		add(toolkit.GraphNode{ID: main, Label: se.Short, Cluster: se.Short, Category: cat})
 		for i, a := range se.Agents {
 			if i >= MaxGraphAgents {
-				add(toolkit.GraphNode{ID: morePrefix + se.Short, Label: "+" + strconv.Itoa(len(se.Agents)-MaxGraphAgents) + " more",
-					Cluster: se.Short, Category: "more sub-agents"})
+				add(toolkit.GraphNode{ID: morePrefix + se.Short, Label: Tf("g.more", len(se.Agents)-MaxGraphAgents),
+					Cluster: se.Short, Category: T("g.moreAgents")})
 				break
 			}
 			id := agentPrefix + se.Short + ":" + a.ID
 			ty := a.Type
 			if ty == "" {
-				ty = "agent"
+				ty = T("d.agent")
 			}
 			label := a.Description
 			if label == "" {
@@ -168,11 +168,11 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 				edge: toolkit.GraphEdge{ID: spawnPrefix + id, From: main, To: id, Label: model.Truncate(a.Description, 80), State: st}})
 		}
 		for _, k := range heldBy[se.Short] {
-			add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: se.Short, Category: "held repo"})
+			add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: se.Short, Category: T("g.heldRepo")})
 		}
 	}
 	if len(free) > 0 {
-		g.clusters = append(g.clusters, toolkit.GraphCluster{ID: reposCluster, Label: repoClusterLabel})
+		g.clusters = append(g.clusters, toolkit.GraphCluster{ID: reposCluster, Label: repoClusterLabel()})
 		// Repositories nobody holds are folded by org: one node per org with a
 		// count, which expands (and collapses) in place. An org with a single
 		// repository needs no fold and shows that repository.
@@ -185,7 +185,7 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 		for _, k := range free {
 			org := orgOf(k)
 			if count[org] < 2 {
-				add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: "repo"})
+				add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: T("g.repo")})
 				continue
 			}
 			if !done[org] {
@@ -194,10 +194,10 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 				if expanded[org] {
 					sign = "- "
 				}
-				add(toolkit.GraphNode{ID: orgPrefix + org, Label: model.Truncate(sign+org+" ("+strconv.Itoa(count[org])+")", NodeChars), Cluster: reposCluster, Category: "org"})
+				add(toolkit.GraphNode{ID: orgPrefix + org, Label: model.Truncate(sign+org+" ("+strconv.Itoa(count[org])+")", NodeChars), Cluster: reposCluster, Category: T("g.org")})
 			}
 			if expanded[org] {
-				add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: "repo"})
+				add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: T("g.repo")})
 			}
 		}
 	}
@@ -324,7 +324,9 @@ func RepoLabel(key string, max int) string {
 	return model.Truncate(repo, max)
 }
 
-// ago renders the age of t at now: "now", "4m", "3h", "2d".
+// ago renders the age of t at now, in the language in use: "now", "4m", "3h",
+// "2d" in English; "maintenant", "4 min", "3 h", "2 j" in French. The units are
+// abbreviations, so they have no plural.
 func ago(now, t time.Time) string {
 	if t.IsZero() {
 		return "-"
@@ -332,11 +334,11 @@ func ago(now, t time.Time) string {
 	d := now.Sub(t)
 	switch {
 	case d < 45*time.Second:
-		return "now"
+		return T("ago.now")
 	case d < time.Hour:
-		return strconv.Itoa(int(d.Minutes())) + "m"
+		return Tf("ago.min", int(d.Minutes()))
 	case d < 48*time.Hour:
-		return strconv.Itoa(int(d.Hours())) + "h"
+		return Tf("ago.hour", int(d.Hours()))
 	}
-	return strconv.Itoa(int(d.Hours()/24)) + "d"
+	return Tf("ago.day", int(d.Hours()/24))
 }

@@ -337,8 +337,11 @@ func (vm *ViewModel) relocalize() {
 	setList(vm.Filters.StateOpts, StateNames())
 	setList(vm.Filters.LastOpts, LastNames())
 	setList(vm.Guard.DecisionOpts, DecisionNames())
+	vm.Guard.onData() // the chips, the notes and the rows are words too
+	vm.Guard.refreshDetail()
 	if vm.have {
 		vm.Apply(vm.snap)
+		vm.onUsage() // the same usage is not a change to Apply, but its notes have new words
 		return
 	}
 	vm.Status.Set(T("status.waiting"))
@@ -360,7 +363,7 @@ func (vm *ViewModel) rebuildGraph() {
 	vm.refreshEdges()
 	vm.notDrawn = ""
 	if g.sessionsNotDrawn > 0 || g.repoNotDrawn > 0 {
-		vm.notDrawn = " | not drawn: " + strconv.Itoa(g.sessionsNotDrawn) + " sessions, " + strconv.Itoa(g.repoNotDrawn) + " repos (see the table)"
+		vm.notDrawn = Tf("vm.notDrawn", g.sessionsNotDrawn, g.repoNotDrawn)
 	}
 }
 
@@ -469,9 +472,8 @@ func (vm *ViewModel) refreshStatus() {
 	}
 	s := vm.snap
 	c := s.Counts()
-	vm.Status.Set(strconv.Itoa(vm.Rows.Len()) + " of " + strconv.Itoa(len(vm.allRows)) + " sessions shown (" + strconv.Itoa(c.Active) + " active in " + s.ActiveFor + ") | " +
-		strconv.Itoa(c.Agents) + " sub-agents | " + strconv.Itoa(c.Repos) + " repos (" + strconv.Itoa(c.Held) + " held) | " +
-		strconv.Itoa(c.Tells) + " tells | " + strconv.Itoa(c.Anomalies) + " anomalies" + vm.notDrawn)
+	vm.Status.Set(Tf("vm.status", vm.Rows.Len(), len(vm.allRows), c.Active, s.ActiveFor,
+		c.Agents, c.Repos, c.Held, c.Tells, c.Anomalies) + vm.notDrawn)
 }
 
 // usageSig is a hash of what the Quota tab is built from: equal for two Usage

@@ -1,6 +1,10 @@
 package ui
 
-import "github.com/go-widgets/toolkit"
+import (
+	"fmt"
+
+	"github.com/go-widgets/toolkit"
+)
 
 // The words of the interface, by key. English is the fallback of every locale: a
 // key a table lacks shows its English text, and the i18ntest check in the tests
@@ -250,9 +254,29 @@ var frMsgs = map[string]string{
 }
 
 // Catalog is every locale of the interface; English answers for a missing key.
-var Catalog = toolkit.NewCatalog("en").Add("en", enMsgs).Add("fr", frMsgs)
+var Catalog = toolkit.NewCatalog("en").Add("en", enAll).Add("fr", frAll)
+
+// enAll and frAll are the chrome's tables and the data texts' (i18n_data.go).
+var (
+	enAll = merge(enMsgs, enData)
+	frAll = merge(frMsgs, frData)
+)
+
+func merge(a, b map[string]string) map[string]string {
+	out := make(map[string]string, len(a)+len(b))
+	for _, m := range []map[string]string{a, b} {
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+	return out
+}
 
 // T is the text of key in the language in use. It reads the toolkit's global
 // localizer, which the ViewModel points at Catalog whenever the language changes,
 // and answers the English text before any language is chosen.
-func T(key string) string { return toolkit.Tr(key, enMsgs[key]) }
+func T(key string) string { return toolkit.Tr(key, enAll[key]) }
+
+// Tf is T with fmt verbs filled in; i18ntest.Check keeps every locale's verbs the
+// same as English's, so the arguments fit whichever language is in force.
+func Tf(key string, args ...any) string { return fmt.Sprintf(T(key), args...) }

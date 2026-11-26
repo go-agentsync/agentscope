@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -63,11 +62,11 @@ type GuardRow struct {
 func (r GuardRow) Cells() []string {
 	after := strconv.Itoa(r.After)
 	if r.AfterInferred > 0 {
-		after += " (" + strconv.Itoa(r.AfterInferred) + " inferred)"
+		after += Tf("gd.inferred", r.AfterInferred)
 	}
 	flag := ""
 	if r.Silent {
-		flag = "SILENT"
+		flag = T("gd.silent")
 	}
 	last := r.Last
 	if last == "" {
@@ -102,7 +101,7 @@ func newGuardState() *GuardState {
 		Data: mvvm.NewObservable[*model.Guardrails](nil), Rows: mvvm.NewObservableList[GuardRow](),
 		Sel: mvvm.NewObservable(-1), Detail: mvvm.NewObservableList[string](),
 		Decision: mvvm.NewObservable(0), DecisionOpts: mvvm.NewObservableList(DecisionNames()...), SortCol: mvvm.NewObservable(GColAfter), SortAsc: mvvm.NewObservable(false),
-		Notes: mvvm.NewObservable("reading the ledger and the transcripts..."),
+		Notes: mvvm.NewObservable(T("gd.reading")),
 	}
 	for i := range g.Chips {
 		g.Chips[i] = mvvm.NewObservable("")
@@ -229,42 +228,42 @@ func (g *GuardState) refreshDetail() {
 // the gate, and the recurrence lines themselves.
 func lessonLines(r model.GuardLesson) []string {
 	lines := []string{r.Name, ""}
-	dec := "decision: " + r.Decision
+	dec := Tf("gd.decision", r.Decision)
 	if r.WrittenAt > 0 {
-		dec += ", written " + time.Unix(r.WrittenAt, 0).Format("2006-01-02 15:04")
+		dec += Tf("gd.written", time.Unix(r.WrittenAt, 0).Format("2006-01-02 15:04"))
 	}
 	lines = append(lines, dec)
-	lines = append(lines, fmt.Sprintf("recurrences: %d (%d dated, %d of them with an inferred year; %d undated)", r.Total, r.Dated, r.Inferred, r.Undated))
+	lines = append(lines, Tf("gd.recurrences", r.Total, r.Dated, r.Inferred, r.Undated))
 	if r.WrittenAt > 0 {
-		s := fmt.Sprintf("after the decision: %d", r.After)
+		s := Tf("gd.after", r.After)
 		if r.AfterInferred > 0 {
-			s += fmt.Sprintf(" (%d with an inferred year)", r.AfterInferred)
+			s += Tf("gd.afterInferred", r.AfterInferred)
 		}
-		lines = append(lines, s+" (dated after the day it was written)")
+		lines = append(lines, s+T("gd.afterDated"))
 	}
 	if r.Silent {
-		lines = append(lines, "SILENT: landed "+strconv.Itoa(silentWeeks)+" or more weeks ago, no refusal from "+strings.Join(r.Named, ", ")+" in that time, and no recurrence since: either obsolete or no longer running")
+		lines = append(lines, Tf("gd.silentWhy", silentWeeks, strings.Join(r.Named, ", ")))
 	} else if r.Decision == "gate" && len(r.Named) == 0 {
-		lines = append(lines, "refusals of this gate are not counted: its text names no hook the transcripts show")
+		lines = append(lines, T("gd.uncounted"))
 	}
 	if r.GateText != "" {
-		lines = append(lines, "", "ledger: "+oneLine(r.GateText))
+		lines = append(lines, "", Tf("gd.ledger", oneLine(r.GateText)))
 	}
 	if len(r.Lines) > 0 {
-		lines = append(lines, "", "recurrence lines:")
+		lines = append(lines, "", T("gd.recLines"))
 	}
 	for _, l := range r.Lines {
-		d := "undated"
+		d := T("gd.undated")
 		switch {
 		case l.Date != "" && l.Inferred:
-			d = l.Date + " (year inferred)"
+			d = l.Date + T("gd.yearInferred")
 		case l.Date != "":
 			d = l.Date
 		}
 		lines = append(lines, "- "+d+": "+oneLine(l.Text))
 	}
 	if r.Total > len(r.Lines) {
-		lines = append(lines, "... "+strconv.Itoa(r.Total-len(r.Lines))+" more recurrence line(s)")
+		lines = append(lines, Tf("gd.moreRec", r.Total-len(r.Lines)))
 	}
 	return lines
 }
@@ -276,25 +275,25 @@ const silentWeeks = 4
 // gates, and the refusals of this week against last. A source that was not
 // measured says so; it is never 0.
 func guardChips(d *model.Guardrails) []string {
-	out := []string{"untriaged: ...", "leaking gates: ...", "silent gates: ...", "refusals: ..."}
+	out := []string{T("gd.c.untriagedWait"), T("gd.c.leakingWait"), T("gd.c.silentWait"), T("gd.c.refusalsWait")}
 	if d == nil {
 		return out
 	}
 	if d.RecurMeasured {
-		out[0] = "untriaged " + strconv.Itoa(d.Untriaged)
-		out[1] = "leaking gates " + strconv.Itoa(d.Leaking)
+		out[0] = Tf("gd.c.untriaged", d.Untriaged)
+		out[1] = Tf("gd.c.leaking", d.Leaking)
 	} else {
-		out[0], out[1] = "untriaged: not measured", "leaking gates: not measured"
+		out[0], out[1] = T("gd.c.untriagedNo"), T("gd.c.leakingNo")
 	}
 	if d.RecurMeasured && d.RefusalsMeasured {
-		out[2] = "silent gates " + strconv.Itoa(d.SilentGates)
+		out[2] = Tf("gd.c.silent", d.SilentGates)
 	} else {
-		out[2] = "silent gates: not measured"
+		out[2] = T("gd.c.silentNo")
 	}
 	if d.RefusalsMeasured {
-		out[3] = fmt.Sprintf("refusals %d this week, %d last", d.ThisWeek, d.LastWeek)
+		out[3] = Tf("gd.c.refusals", d.ThisWeek, d.LastWeek)
 	} else {
-		out[3] = "refusals: not measured"
+		out[3] = T("gd.c.refusalsNo")
 	}
 	return out
 }
@@ -303,24 +302,24 @@ func guardChips(d *model.Guardrails) []string {
 // leave out.
 func guardNotes(d *model.Guardrails) string {
 	if d == nil {
-		return "reading the ledger and the transcripts..."
+		return T("gd.reading")
 	}
 	var n []string
 	if !d.RecurMeasured {
-		n = append(n, "recur not measured: "+d.RecurErr)
+		n = append(n, Tf("gd.n.recurNo", d.RecurErr))
 	} else {
 		undated, inferred := 0, 0
 		for _, r := range d.Rows {
 			undated += r.Undated
 			inferred += r.Inferred
 		}
-		n = append(n, fmt.Sprintf("%d lessons; %d undated recurrences are not on the chart; %d dated ones have an inferred year (drawn as their own line)", d.Lessons, undated, inferred))
+		n = append(n, Tf("gd.n.lessons", d.Lessons, undated, inferred))
 		if d.Unreadable > 0 {
-			n = append(n, strconv.Itoa(d.Unreadable)+" memory file(s) unreadable")
+			n = append(n, Tf("gd.n.unreadable", d.Unreadable))
 		}
 	}
 	if !d.RefusalsMeasured {
-		n = append(n, "refusals not measured: the transcripts have not been scanned")
+		n = append(n, T("gd.n.refusalsNo"))
 	}
 	return strings.Join(n, "  |  ")
 }
@@ -365,8 +364,8 @@ func buildGuard(d *model.Guardrails, dark bool) guardView {
 		peak = max(peak, d.RecStated[i], d.RecInferred[i])
 	}
 	v.Rec.Overlays = []toolkit.TimeLine{
-		{Name: "recurrences (dated)", Ink: Brand, Points: stated},
-		{Name: "year inferred", Ink: p[5], Points: inferred},
+		{Name: T("gd.s.dated"), Ink: Brand, Points: stated},
+		{Name: T("gd.s.inferred"), Ink: p[5], Points: inferred},
 	}
 	v.Rec.Max = toolkit.NiceCeiling(max(peak, 1))
 	for _, l := range d.Landings {

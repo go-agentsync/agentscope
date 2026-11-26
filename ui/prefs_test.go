@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-agentsync/agentscope/model"
 	"github.com/go-widgets/toolkit"
@@ -159,6 +161,63 @@ func TestSceneFollowsLanguage(t *testing.T) {
 	vm.Prefs.LangSel.Set(1)
 	if s.expired.Label != "expired leases" {
 		t.Fatalf("back to English: %q", s.expired.Label)
+	}
+}
+
+func TestDataTextsFollowLanguage(t *testing.T) {
+	resetLang(t)
+	s := newScene(t)
+	vm := s.VM()
+	vm.Apply(withUsage(snapWith(guardFixture())))
+	vm.Tab.Set(TabGuardrails)
+	vm.Guard.Sel.Set(1)
+	vm.Prefs.LangSel.Set(2)
+	if !strings.Contains(vm.Status.Get(), "sessions affichées") {
+		t.Fatalf("status: %q", vm.Status.Get())
+	}
+	if !strings.HasPrefix(s.gChips[0].Text, "non triées") || !strings.HasPrefix(s.gChips[3].Text, "refus ") {
+		t.Fatalf("chips: %q %q", s.gChips[0].Text, s.gChips[3].Text)
+	}
+	if strings.Contains(s.gNotes.Text().Get(), "undated recurrences") {
+		t.Fatalf("guard notes: %q", s.gNotes.Text().Get())
+	}
+	if l := vm.Guard.Detail.At(2); !strings.HasPrefix(l, "décision : ") {
+		t.Fatalf("detail: %q", l)
+	}
+	vm.Tab.Set(TabQuota)
+	if !strings.Contains(vm.QuotaNotes.Get(), "capacité restante") {
+		t.Fatalf("quota notes: %q", vm.QuotaNotes.Get())
+	}
+	vm.Prefs.LangSel.Set(1)
+	vm.Tab.Set(TabGuardrails)
+	if !strings.HasPrefix(s.gChips[0].Text, "untriaged") {
+		t.Fatalf("back to English: %q", s.gChips[0].Text)
+	}
+}
+
+func TestAgesAnomaliesAndWindowsFollowLanguage(t *testing.T) {
+	resetLang(t)
+	t0 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	vm := NewViewModel()
+	vm.Prefs.LangSel.Set(2)
+	for d, want := range map[time.Duration]string{time.Second: "maintenant", 4 * time.Minute: "4 min", 3 * time.Hour: "3 h", 72 * time.Hour: "3 j"} {
+		if got := ago(t0, t0.Add(-d)); got != want {
+			t.Errorf("ago(%v) = %q, want %q", d, got, want)
+		}
+	}
+	if got := anomalyKind(model.AnomalyBadLine); got != "ligne illisible" {
+		t.Errorf("kind: %q", got)
+	}
+	if got := anomalyKind("something new"); got != "something new" {
+		t.Errorf("an unknown kind must stay as it came: %q", got)
+	}
+	if got := anomalyLines(model.Snapshot{Anomalies: []model.Anomaly{{Kind: model.AnomalyUnreadable, Subject: "x"}}})[1]; got != "fichier illisible : x" {
+		t.Errorf("line: %q", got)
+	}
+	for in, want := range map[string]string{"Session (5hr)": "Session (5 h)", "Weekly (7 day)": "Hebdomadaire (7 jours)", "Weekly Opus": "Hebdomadaire Opus", "Other": "Other"} {
+		if got := windowLabel(in); got != want {
+			t.Errorf("windowLabel(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

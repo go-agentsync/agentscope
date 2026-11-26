@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/go-agentsync/agentscope/model"
@@ -159,6 +160,37 @@ func TestSceneFollowsLanguage(t *testing.T) {
 	vm.Prefs.LangSel.Set(1)
 	if s.expired.Label != "expired leases" {
 		t.Fatalf("back to English: %q", s.expired.Label)
+	}
+}
+
+func TestDataTextsFollowLanguage(t *testing.T) {
+	resetLang(t)
+	s := newScene(t)
+	vm := s.VM()
+	vm.Apply(withUsage(snapWith(guardFixture())))
+	vm.Tab.Set(TabGuardrails)
+	vm.Guard.Sel.Set(1)
+	vm.Prefs.LangSel.Set(2)
+	if !strings.Contains(vm.Status.Get(), "sessions affichées") {
+		t.Fatalf("status: %q", vm.Status.Get())
+	}
+	if !strings.HasPrefix(s.gChips[0].Text, "non triées") || !strings.HasPrefix(s.gChips[3].Text, "refus ") {
+		t.Fatalf("chips: %q %q", s.gChips[0].Text, s.gChips[3].Text)
+	}
+	if strings.Contains(s.gNotes.Text().Get(), "undated recurrences") {
+		t.Fatalf("guard notes: %q", s.gNotes.Text().Get())
+	}
+	if l := vm.Guard.Detail.At(2); !strings.HasPrefix(l, "décision : ") {
+		t.Fatalf("detail: %q", l)
+	}
+	vm.Tab.Set(TabQuota)
+	if !strings.Contains(vm.QuotaNotes.Get(), "capacité restante") {
+		t.Fatalf("quota notes: %q", vm.QuotaNotes.Get())
+	}
+	vm.Prefs.LangSel.Set(1)
+	vm.Tab.Set(TabGuardrails)
+	if !strings.HasPrefix(s.gChips[0].Text, "untriaged") {
+		t.Fatalf("back to English: %q", s.gChips[0].Text)
 	}
 }
 

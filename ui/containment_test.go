@@ -41,7 +41,7 @@ func crowded() model.Snapshot {
 // the page, the side panel and the Rename dialog.
 func outside(s *Scene) []toolkit.LayoutProblem {
 	var out []toolkit.LayoutProblem
-	for _, root := range []toolkit.Widget{s.root, s.panel, s.renameDlg} {
+	for _, root := range []toolkit.Widget{s.root, s.panel, s.renameDlg, s.colorDlg} {
 		for _, p := range toolkit.LayoutProblems(root) {
 			if p.Kind == toolkit.LayoutOutside {
 				out = append(out, p)
@@ -73,6 +73,11 @@ func TestNothingLeavesItsFrame(t *testing.T) {
 				t.Fatalf("%s: the graph's clusters and nodes: %v", name, ps[0])
 			}
 			vm.Rename.Open.Set(false)
+			vm.Color.Open.Set(true)
+			if got := outside(s); len(got) != 0 {
+				t.Fatalf("%s, colour dialog: %v", name, got[0])
+			}
+			vm.Color.Open.Set(false)
 			vm.Tab.Set(TabQuota)
 			if got := outside(s); len(got) != 0 {
 				t.Fatalf("%s, quota tab: %v", name, got[0])

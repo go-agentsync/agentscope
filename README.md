@@ -178,6 +178,23 @@ selector, the table, the chart legends and the reset markers. With **`serve --sh
 flag no organisation name is read, sent, drawn or logged. The renaming goes over the
 same loopback WebSocket as the stream (same-origin only), as the one write the UI makes.
 
+**Account colours.** In the "all accounts" quota view each account's lines and reset
+markers are drawn in an automatic colour (by the account's position). The **Colour...**
+button (select a row first) opens the toolkit's colour picker; **OK** gives the account
+a colour of its own, **Reset** gives the automatic one back, **Cancel** (or Escape)
+changes nothing. The choice is written by the `serve` process, atomically with mode
+0600, to `<user config dir>/agentscope/account-colors.toml`, the same key as the aliases:
+
+```toml
+"7567" = "#12ab34"
+```
+
+A colour is exactly `#` and six hexadecimal digits (the picker's alpha is dropped, a
+line is always opaque); anything else is refused by the server, and ignored in a file
+edited by hand, which is read with the same 64 KiB bound as the aliases and at most 256
+entries. A missing or corrupt file means the automatic colours; the colours survive a
+restart.
+
 *Official usage* comes from `aiquota status -o json` (run from `PATH`, fixed arguments, no
 shell; aiquota already shares one reading between processes and serves stale data when
 rate-limited, so agentscope reads it **at most every 5 minutes**), one reading per account

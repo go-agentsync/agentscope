@@ -119,6 +119,12 @@ var createTemp = func(dir, pattern string) (tempFile, error) { return os.CreateT
 // writeAliases replaces the file atomically: a temporary file in the same
 // directory, mode 0600, renamed over it.
 func writeAliases(path string, m map[string]string) error {
+	return writeText(path, formatAliases(m))
+}
+
+// writeText replaces the file at path with text, atomically, mode 0600: the
+// writer both the alias file and the colour file share.
+func writeText(path, text string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -131,7 +137,7 @@ func writeAliases(path string, m map[string]string) error {
 		tmp.Close()
 		return err
 	}
-	if _, err := tmp.WriteString(formatAliases(m)); err != nil {
+	if _, err := tmp.WriteString(text); err != nil {
 		tmp.Close()
 		return err
 	}

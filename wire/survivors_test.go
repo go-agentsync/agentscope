@@ -18,6 +18,7 @@ type fixed struct{ snaps []model.Snapshot }
 
 func (f fixed) Snapshot(context.Context) (model.Snapshot, error) { return f.snaps[0], nil }
 func (f fixed) Rename(context.Context, string, string) error     { return nil }
+func (f fixed) SetColor(context.Context, string, string) error   { return nil }
 func (f fixed) Watch(ctx context.Context, send func(model.Snapshot) error) error {
 	for _, s := range f.snaps {
 		if err := send(s); err != nil {

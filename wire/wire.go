@@ -32,7 +32,16 @@ const (
 	methodSnapshot = "/" + ServiceName + "/Snapshot"
 	methodWatch    = "/" + ServiceName + "/Watch"
 	methodRename   = "/" + ServiceName + "/Rename"
+	methodSetColor = "/" + ServiceName + "/SetColor"
 )
+
+// SetColorRequest asks the server to give the account with the key a colour
+// (Color "" restores the automatic one): a write to account-colors.toml, by the
+// serve process, which refuses anything but #rrggbb.
+type SetColorRequest struct {
+	Key   string `json:"key"`
+	Color string `json:"color"`
+}
 
 // RenameRequest asks the server to give the account with the key a display name
 // (Name "" removes it): the one write the UI makes, to accounts.toml, by the
@@ -82,6 +91,7 @@ type Scope interface {
 	Snapshot(ctx context.Context) (model.Snapshot, error)
 	Watch(ctx context.Context, send func(model.Snapshot) error) error
 	Rename(ctx context.Context, key, name string) error
+	SetColor(ctx context.Context, key, color string) error
 }
 
 // Register registers s on gs.
@@ -104,6 +114,22 @@ func Register(gs grpc.ServiceRegistrar, s Scope) {
 					return call(ctx, &in)
 				}
 				return ic(ctx, &in, &grpc.UnaryServerInfo{Server: srv, FullMethod: methodRename}, call)
+			},
+		}, {
+			MethodName: "SetColor",
+			Handler: func(srv any, ctx context.Context, dec func(any) error, ic grpc.UnaryServerInterceptor) (any, error) {
+				var in SetColorRequest
+				if err := dec(&in); err != nil {
+					return nil, err
+				}
+				call := func(ctx context.Context, req any) (any, error) {
+					r := req.(*SetColorRequest)
+					return &Empty{}, srv.(Scope).SetColor(ctx, r.Key, r.Color)
+				}
+				if ic == nil {
+					return call(ctx, &in)
+				}
+				return ic(ctx, &in, &grpc.UnaryServerInfo{Server: srv, FullMethod: methodSetColor}, call)
 			},
 		}, {
 			MethodName: "Snapshot",

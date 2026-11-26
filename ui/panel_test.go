@@ -249,7 +249,7 @@ func TestQuotaTabSelectorsDriveTheViewModel(t *testing.T) {
 		t.Fatal("the kind radio did not drive the view model")
 	}
 	click(s.spanRadios[SpanShort])
-	if vm.Span.Get() != SpanShort || s.quota.Visible().Get() != "allrange" || len(s.targets()) != 4+3+3 {
+	if vm.Span.Get() != SpanShort || s.quota.Visible().Get() != "allrange" || len(s.targets()) != 4+3+4 {
 		t.Fatal("the 5 h span uses the range layout and has no kind selector")
 	}
 	buf := pixels(s)

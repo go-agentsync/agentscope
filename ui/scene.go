@@ -91,6 +91,15 @@ type Scene struct {
 	renameOK    *toolkit.Button
 	renameNo    *toolkit.Button
 
+	// The Colour action of the accounts table, and its dialog.
+	colorBtn    *toolkit.Button
+	colorDlg    *toolkit.Dialog
+	colorPicker *toolkit.ColorPicker
+	colorErr    *toolkit.Label
+	colorOK     *toolkit.Button
+	colorNo     *toolkit.Button
+	colorReset  *toolkit.Button
+
 	// The Quota tab.
 	spanGroup, kindGroup *toolkit.RadioGroup
 	spanRadios           []*toolkit.RadioButton
@@ -204,7 +213,31 @@ func (s *Scene) buildQuotaWidgets() {
 	s.capTable.MultiSelect = true
 	s.renameBtn = toolkit.NewButton("Rename...", nil)
 	s.buildRenameDialog()
+	s.colorBtn = toolkit.NewButton("Colour...", nil)
+	s.buildColorDialog()
 }
+
+// buildColorDialog makes the Colour dialog: the toolkit's colour picker, a line
+// for what went wrong, and Reset, Cancel and OK. Its state is the ViewModel's
+// (Color).
+func (s *Scene) buildColorDialog() {
+	s.colorPicker = toolkit.NewColorPicker(toolkit.RGBA{A: 0xFF})
+	s.colorErr = toolkit.NewLabel("")
+	s.colorOK = toolkit.NewButton("OK", nil)
+	s.colorNo = toolkit.NewButton("Cancel", nil)
+	s.colorReset = toolkit.NewButton("Reset", nil)
+	body := toolkit.NewVBox()
+	body.Spacing = 6
+	body.AddFixed(toolkit.NewLabel("Colour of the account's lines (Reset: automatic)"), 22)
+	body.AddFlex(s.colorPicker, 1) // the dialog is sized to the picker (openDialog), at the scale in use
+	body.AddFixed(s.colorErr, 22)
+	s.colorDlg = toolkit.NewDialog("Colour of account", body, s.colorReset, s.colorNo, s.colorOK)
+	s.colorDlg.PlainTitle = true
+}
+
+// dialogOpen is whether a modal dialog is up: it holds the keyboard and takes
+// every click.
+func (s *Scene) dialogOpen() bool { return s.vm.Rename.Open.Get() || s.vm.Color.Open.Get() }
 
 // buildRenameDialog makes the Rename dialog: an entry for the name, a line for
 // what went wrong, and OK and Cancel. Its state is the ViewModel's (Rename).
@@ -246,7 +279,7 @@ func (s *Scene) buildPanelWidgets() {
 // focusOn gives the keyboard to the widget a press is about to reach (nobody for
 // a press on nothing); the press itself may then move it again.
 func (s *Scene) focusOn(w toolkit.Widget) {
-	if s.vm.Rename.Open.Get() { // the dialog's entry holds the keyboard
+	if s.dialogOpen() { // the dialog holds the keyboard
 		return
 	}
 	s.keyTarget = w
@@ -256,7 +289,7 @@ func (s *Scene) focusOn(w toolkit.Widget) {
 // edges are the dividers a press grabs: the one between Sessions and Details
 // and the panel's left edge, while the panel is shown and no dialog is open.
 func (s *Scene) edges() []toolkit.PointerClaimer {
-	if !s.PanelVisible() || s.vm.Rename.Open.Get() {
+	if !s.PanelVisible() || s.dialogOpen() {
 		return nil
 	}
 	return []toolkit.PointerClaimer{s.vsplit, s.split}
@@ -325,6 +358,13 @@ func (s *Scene) bind() {
 		mvvmtk.BindEntryText(s.renameEntry, vm.Rename.Text, invalidate),
 		mvvmtk.BindLabel(s.renameErr, vm.Rename.Err, invalidate),
 		vm.Rename.Open.SubscribeChanged(func() { s.syncDialog(); invalidate() }),
+		mvvmtk.BindCommand(s.colorBtn, vm.Color.Begin, invalidate),
+		mvvmtk.BindCommand(s.colorOK, vm.Color.Confirm, invalidate),
+		mvvmtk.BindCommand(s.colorNo, vm.Color.Cancel, invalidate),
+		mvvmtk.BindCommand(s.colorReset, vm.Color.Reset, invalidate),
+		mvvmtk.BindColorPicker(s.colorPicker, vm.Color.Pick, invalidate),
+		mvvmtk.BindLabel(s.colorErr, vm.Color.Err, invalidate),
+		vm.Color.Open.SubscribeChanged(func() { s.syncDialog(); invalidate() }),
 		vm.PanelW.SubscribeChanged(invalidate), // the splitter lays itself out on its Size
 		// A new split decides which filter rows the Sessions pane has room for.
 		vm.Split.SubscribeChanged(func() { s.layout(); invalidate() }),
@@ -622,6 +662,7 @@ func (s *Scene) quotaPage() toolkit.Widget {
 	second.AddFlex(toolkit.NewLabel(""), 1)
 	// Rename acts on the account selected in the table below.
 	second.AddFixed(s.renameBtn, px(renameW))
+	second.AddFixed(s.colorBtn, px(renameW))
 	controls := toolkit.NewVBox()
 	controls.Spacing = px(gap / 4)
 	controls.AddFixed(first, px(controlsH))
@@ -697,18 +738,34 @@ func (s *Scene) PanelVisible() bool {
 	return s.vm.PanelOpen.Get() && s.vm.Tab.Get() == TabGraph
 }
 
-// syncPanel puts the panel (in its splitter) and, above it, the Rename dialog in
+// openDialog is the modal dialog that is up, nil when there is none, and its size
+// in logical pixels.
+func (s *Scene) openDialog() (d *toolkit.Dialog, w, h int) {
+	switch {
+	case s.vm.Rename.Open.Get():
+		return s.renameDlg, dialogW, dialogH
+	case s.vm.Color.Open.Get():
+		return s.colorDlg, dialogW, toolkit.ColorPickerHeight + colorDialogExtra
+	}
+	return nil, 0, 0
+}
+
+// syncPanel puts the panel (in its splitter) and, above it, the open dialog in
 // the overlay, or takes them out.
 func (s *Scene) syncPanel() {
 	s.overlay.Clear()
-	if s.vm.Rename.Open.Get() {
-		w, h := s.px(dialogW), s.px(dialogH)
-		s.renameDlg.SetBounds(toolkit.Rect{X: (s.w - w) / 2, Y: (s.h - h) / 3, W: w, H: h})
-		s.overlay.Push(s.renameDlg)
+	if d, lw, lh := s.openDialog(); d != nil {
+		// The toolkit's ModalWindow places the dialog: centred in the surface and
+		// clamped to fit, its size in logical pixels. The scrim is its own; a click on
+		// it does not dismiss, the dialog closes by its buttons and Escape.
+		m := toolkit.NewModalWindow("", nil)
+		m.Panel, m.CloseOnScrim, m.PanelW, m.PanelH = d, false, lw, lh
+		m.SetBounds(toolkit.Rect{W: s.w, H: s.h})
+		s.overlay.Push(m)
 	}
 }
 
-// syncDialog shows or hides the Rename dialog, with the entry focused.
+// syncDialog shows or hides the dialogs, with the Rename entry focused.
 func (s *Scene) syncDialog() {
 	s.syncPanel()
 	open := s.vm.Rename.Open.Get()
@@ -724,6 +781,9 @@ func (s *Scene) syncDialog() {
 const (
 	dialogW = 400
 	dialogH = 190
+	// colorDialogExtra is what the Colour dialog holds besides the picker: its label,
+	// error line, the gaps, the title and the buttons.
+	colorDialogExtra = 22 + 6 + 6 + 22 + 60
 )
 
 // applyTheme sets the Slate theme of the system's preference, and what depends
@@ -783,8 +843,8 @@ func (s *Scene) Draw(buf []byte) {
 // graph's, then the header's, then those of the shown tab.
 func (s *Scene) targets() []toolkit.Widget {
 	var t []toolkit.Widget
-	if s.vm.Rename.Open.Get() { // the dialog is modal: it takes every click
-		return []toolkit.Widget{s.renameDlg}
+	if d, _, _ := s.openDialog(); d != nil { // the dialog is modal: it takes every click
+		return []toolkit.Widget{d}
 	}
 	if s.PanelVisible() {
 		// A row a short Sessions pane has no room for is laid out empty, and the
@@ -802,7 +862,7 @@ func (s *Scene) targets() []toolkit.Widget {
 	case TabGuardrails:
 		return append(t, s.gDecision, s.gTable, s.gDetail)
 	}
-	t = append(t, s.accountDD, s.capTable, s.renameBtn)
+	t = append(t, s.accountDD, s.capTable, s.renameBtn, s.colorBtn)
 	for _, r := range s.spanRadios {
 		t = append(t, r)
 	}
@@ -824,7 +884,7 @@ func (s *Scene) HandleClick(x, y int) bool {
 			return true
 		}
 	}
-	if s.vm.Rename.Open.Get() {
+	if s.dialogOpen() {
 		return s.clickDialog(x, y)
 	}
 	// The router gives the press to a divider (the panel's left edge, the one
@@ -839,13 +899,16 @@ func (s *Scene) dropDowns() []*toolkit.DropDown {
 	return []*toolkit.DropDown{s.accountDD, s.gDecision, s.stateDD, s.lastDD, s.repoDD}
 }
 
-// clickDialog gives a click to the Rename dialog; a click outside it is
-// swallowed, the dialog being modal.
+// clickDialog gives a click to the open dialog; a click outside it is
+// swallowed, the dialog being modal. The Rename dialog takes the click, not a
+// drag; the Colour dialog keeps the grab, so a drag in its picker goes on.
 func (s *Scene) clickDialog(x, y int) bool {
 	if s.ptr.Press(x, y, "") != nil {
 		s.renameEntry.SetFocused(s.vm.Rename.Open.Get())
 	}
-	s.ptr.Cancel() // the dialog takes the click, not a drag
+	if s.vm.Rename.Open.Get() {
+		s.ptr.Cancel()
+	}
 	return true
 }
 
@@ -861,6 +924,9 @@ func (s *Scene) HandleScroll(x, y, delta int) bool {
 func (s *Scene) HandleChar(ch string) bool {
 	if s.vm.Rename.Open.Get() { // the dialog's entry takes every character
 		s.renameDlg.OnEvent(toolkit.Event{Kind: toolkit.EventChar, Code: ch})
+		return true
+	}
+	if s.vm.Color.Open.Get() { // the picker takes none: nothing behind the dialog hears it
 		return true
 	}
 	if ch == "t" && s.keyTarget != toolkit.Widget(s.search) {
@@ -884,6 +950,15 @@ func (s *Scene) HandleKeyDown(code string) bool {
 			s.vm.Rename.Confirm.Execute()
 		default:
 			s.renameDlg.OnEvent(toolkit.Event{Kind: toolkit.EventKeyDown, Code: code})
+		}
+		return true
+	}
+	if s.vm.Color.Open.Get() { // Enter confirms the dialog, Escape cancels it, the rest is ignored
+		switch code {
+		case "Escape":
+			s.vm.Color.Cancel.Execute()
+		case "Enter":
+			s.vm.Color.Confirm.Execute()
 		}
 		return true
 	}

@@ -81,10 +81,10 @@ func usageFixture() *model.Usage {
 func TestAccountOptionsNameAccountsByLabelPlanAndShortHashOnly(t *testing.T) {
 	u := usageFixture()
 	got := AccountOptions(u)
-	if len(got) != 4 || got[0] != AllAccounts || got[1] != "Claude Code (max) #aaaa" || got[2] != "Claude Code (team) #bbbb - active" || !strings.HasPrefix(got[3], "unknown account") {
+	if len(got) != 4 || got[0] != AllAccounts() ||got[1] != "Claude Code (max) #aaaa" || got[2] != "Claude Code (team) #bbbb - active" || !strings.HasPrefix(got[3], "unknown account") {
 		t.Fatalf("%q", got)
 	}
-	if o := AccountOptions(nil); len(o) != 1 || o[0] != AllAccounts {
+	if o := AccountOptions(nil); len(o) != 1 || o[0] != AllAccounts() {
 		t.Fatal(o)
 	}
 	if accountTag("ab", "", "", "") != "account #ab" {

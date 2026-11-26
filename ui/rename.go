@@ -93,7 +93,7 @@ func (r *RenameState) confirm() {
 	}
 	name := strings.TrimSpace(r.Text.Get())
 	if r.Send == nil {
-		r.Err.Set("this view cannot rename accounts")
+		r.Err.Set(T("rename.unsupported"))
 		return
 	}
 	r.Err.Set("")

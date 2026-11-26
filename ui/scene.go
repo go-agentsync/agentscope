@@ -67,6 +67,8 @@ type Scene struct {
 	// The side panel: a top bar with its title and a close button, the filter row,
 	// the sessions table, and the Details gauges and text. split holds the panel
 	// beside a spacer so its left edge can be dragged.
+	themeDD, langDD         *toolkit.DropDown // the header's theme and language selectors
+	renameBody, colorBody   *toolkit.Label    // the dialogs' lines
 	panelTitle              *toolkit.Label
 	closeBtn                *toolkit.IconButton
 	stateDD, lastDD, repoDD *toolkit.DropDown
@@ -150,12 +152,14 @@ func NewScene(w, h int) *Scene {
 	s.search = toolkit.NewSearchEntry("")
 	// Without an Icon the entry draws "?" as a stand-in for the magnifier.
 	s.search.Icon = toolkit.DrawIconSearch
-	s.expired = toolkit.NewCheckButton("expired leases", false)
-	s.toggle = toolkit.NewButton("Sessions (t)", nil)
+	s.expired = toolkit.NewCheckButton("", false)
+	s.toggle = toolkit.NewButton("", nil)
 	s.tabs = toolkit.NewNotebook()
-	s.tabs.AddTab("Graph", nil)
-	s.tabs.AddTab("Quota", nil)
-	s.tabs.AddTab("Guardrails", nil)
+	s.tabs.AddTab("", nil)
+	s.tabs.AddTab("", nil)
+	s.tabs.AddTab("", nil)
+	s.themeDD = toolkit.NewDropDown(ThemeNames(), 0)
+	s.langDD = toolkit.NewDropDown(LangNames(), 0)
 	s.title = toolkit.NewLabel("agentscope")
 	s.logo = toolkit.NewStatusIcon(iconoir.Drawer("network-right"))
 	s.conn = toolkit.NewChip("")
@@ -183,21 +187,52 @@ func NewScene(w, h int) *Scene {
 	s.buildGuardWidgets()
 	s.bind()
 	s.applyTheme()
-	s.layout()
+	s.applyLang()
 	s.dirty = true
 	return s
+}
+
+// applyLang sets the text of every widget built once, in the language in use, and
+// lays the screen out again (the containers read their titles then). The texts the
+// ViewModel holds are rebuilt by the ViewModel itself.
+func (s *Scene) applyLang() {
+	s.expired.Label = T("hdr.expired")
+	s.toggle.Label().Set(T("hdr.sessions"))
+	for i, k := range []string{"tab.graph", "tab.quota", "tab.guardrails"} {
+		s.tabs.Tabs[i].Label = T(k)
+	}
+	s.themeDD.Options, s.langDD.Options = ThemeNames(), LangNames()
+	s.stateDD.Options, s.lastDD.Options, s.gDecision.Options = StateNames(), LastNames(), DecisionNames()
+	for i, n := range SpanNames() {
+		s.spanRadios[i].Label = n
+	}
+	for i, n := range KindNames() {
+		s.kindRadios[i].Label = n
+	}
+	for b, k := range map[*toolkit.Button]string{
+		s.renameBtn: "btn.rename", s.colorBtn: "btn.colour", s.clearBtn: "filter.clear",
+		s.renameOK: "btn.ok", s.renameNo: "btn.cancel", s.colorOK: "btn.ok", s.colorNo: "btn.cancel", s.colorReset: "btn.reset",
+	} {
+		b.Label().Set(T(k))
+	}
+	s.renameEntry.Placeholder = T("rename.placeholder")
+	s.renameDlg.Title, s.colorDlg.Title = T("rename.title"), T("colour.title")
+	s.renameBody.Text().Set(T("rename.body"))
+	s.colorBody.Text().Set(T("colour.body"))
+	s.panelTitle.Text().Set(T("panel.title"))
+	s.layout()
 }
 
 // buildQuotaWidgets makes the Quota tab's widgets; their data and bindings come
 // from bindQuota.
 func (s *Scene) buildQuotaWidgets() {
 	s.spanGroup, s.kindGroup = toolkit.NewRadioGroup(), toolkit.NewRadioGroup()
-	for _, n := range SpanNames {
+	for _, n := range SpanNames() {
 		r := toolkit.NewRadioButton(n)
 		s.spanGroup.Add(r)
 		s.spanRadios = append(s.spanRadios, r)
 	}
-	for _, n := range KindNames {
+	for _, n := range KindNames() {
 		r := toolkit.NewRadioButton(n)
 		s.kindGroup.Add(r)
 		s.kindRadios = append(s.kindRadios, r)
@@ -207,13 +242,13 @@ func (s *Scene) buildQuotaWidgets() {
 	stack := func() *toolkit.StackedBarChart { return toolkit.NewStackedBarChart(nil, nil) }
 	s.outBars, s.cacheBars, s.weekBars = stack(), stack(), stack()
 	s.notes = toolkit.NewLabel("")
-	s.accountDD = toolkit.NewDropDown([]string{AllAccounts}, 0)
+	s.accountDD = toolkit.NewDropDown([]string{AllAccounts()}, 0)
 	s.capTable = toolkit.NewTable(capColumns(1), nil)
 	// A click selects a row only while MultiSelect is on (go-widgets/toolkit#595).
 	s.capTable.MultiSelect = true
 	s.renameBtn = toolkit.NewButton("Rename...", nil)
 	s.buildRenameDialog()
-	s.colorBtn = toolkit.NewButton("Colour...", nil)
+	s.colorBtn = toolkit.NewButton("Colour...", nil) // texts are set by applyLang
 	s.buildColorDialog()
 }
 
@@ -228,7 +263,8 @@ func (s *Scene) buildColorDialog() {
 	s.colorReset = toolkit.NewButton("Reset", nil)
 	body := toolkit.NewVBox()
 	body.Spacing = 6
-	body.AddFixed(toolkit.NewLabel("Colour of the account's lines (Reset: automatic)"), 22)
+	s.colorBody = toolkit.NewLabel("")
+	body.AddFixed(s.colorBody, 22)
 	body.AddFlex(s.colorPicker, 1) // the dialog is sized to the picker (openDialog), at the scale in use
 	body.AddFixed(s.colorErr, 22)
 	s.colorDlg = toolkit.NewDialog("Colour of account", body, s.colorReset, s.colorNo, s.colorOK)
@@ -249,7 +285,8 @@ func (s *Scene) buildRenameDialog() {
 	s.renameNo = toolkit.NewButton("Cancel", nil)
 	body := toolkit.NewVBox()
 	body.Spacing = 6
-	body.AddFixed(toolkit.NewLabel("Display name (empty removes it)"), 22)
+	s.renameBody = toolkit.NewLabel("")
+	body.AddFixed(s.renameBody, 22)
 	body.AddFixed(s.renameErr, 22)
 	s.renameDlg = toolkit.NewDialog("Rename account", body, s.renameNo, s.renameOK)
 	s.renameDlg.Input = s.renameEntry
@@ -263,14 +300,14 @@ func (s *Scene) buildPanelWidgets() {
 	s.closeBtn = toolkit.NewIconButton("", nil)
 	s.closeBtn.Glyph = iconoir.Drawer("xmark")
 	s.closeBtn.Flat = true
-	s.stateDD = toolkit.NewDropDown(StateNames, StateAll)
-	s.lastDD = toolkit.NewDropDown(LastNames, 0)
-	s.repoDD = toolkit.NewDropDown([]string{AllRepos}, 0)
+	s.stateDD = toolkit.NewDropDown(StateNames(), StateAll)
+	s.lastDD = toolkit.NewDropDown(LastNames(), 0)
+	s.repoDD = toolkit.NewDropDown([]string{AllRepos()}, 0)
 	for i := range s.modelChecks {
 		s.modelChecks[i] = toolkit.NewCheckButton("", false)
 	}
 	s.clearBtn = toolkit.NewButton("Clear filters", nil)
-	s.ctxTable = toolkit.NewTable([]toolkit.TableColumn{{Title: "Context of", Width: 150}, {Title: "Context"}}, nil)
+	s.ctxTable = toolkit.NewTable([]toolkit.TableColumn{{Title: T("ctx.of"), Width: 150}, {Title: T("ctx.context")}}, nil)
 	s.spacer = toolkit.NewLabel("")
 	s.hover, s.vhover = -1, -1
 	s.ptr = toolkit.PointerRouter{Edges: s.edges, Targets: s.targets, OnGrab: s.focusOn}
@@ -324,6 +361,9 @@ func (s *Scene) bind() {
 		vm.Graph.Nodes.SubscribeChanged(invalidate),
 		vm.Graph.Clusters.SubscribeChanged(invalidate),
 		vm.Dark.SubscribeChanged(func() { s.applyTheme(); s.refreshQuota(); s.refreshGuard(); invalidate() }),
+		mvvmtk.BindSelectedIndex(s.themeDD, vm.Prefs.ThemeSel, invalidate),
+		mvvmtk.BindSelectedIndex(s.langDD, vm.Prefs.LangSel, invalidate),
+		vm.Prefs.Lang.SubscribeChanged(func() { s.applyLang(); invalidate() }),
 		vm.PanelOpen.SubscribeChanged(func() { s.syncPanel(); invalidate() }),
 		vm.Tab.SubscribeChanged(func() {
 			s.syncPages()
@@ -462,8 +502,14 @@ func (s *Scene) layout() {
 	top := toolkit.NewHBox()
 	top.Spacing = px(gap / 2)
 	top.AddFixed(s.logo, px(iconW))
-	top.AddFixed(s.title, px(titleW))
-	top.AddFixed(s.conn, px(connW))
+	// The theme and language selectors take room: on a narrow window the name, then
+	// the connection chip, give way to them (the status line still says it).
+	if s.w >= px(narrowTitleW) {
+		top.AddFixed(s.title, px(titleW))
+	}
+	if s.w >= px(narrowConnW) {
+		top.AddFixed(s.conn, px(connW))
+	}
 	// Under a width the chips do not fit beside the search: they leave the header
 	// (the Details and the status line still say it) so nothing runs off its edge.
 	if s.w >= px(wideHeaderW) {
@@ -473,6 +519,8 @@ func (s *Scene) layout() {
 	}
 	top.AddFlex(s.search, 1) // the search takes what the fixed parts leave
 	top.AddFixed(s.expired, px(expiredW))
+	top.AddFixed(s.themeDD, px(selectW))
+	top.AddFixed(s.langDD, px(selectW))
 	top.AddFixed(s.toggle, px(toggleW))
 	header := card("", top, cardPad)
 
@@ -502,6 +550,17 @@ func (s *Scene) layout() {
 	s.refreshQuota()
 	s.refreshGuard()
 }
+
+// selectW is the width, in logical pixels, of each of the header's theme and
+// language selectors.
+const selectW = 96
+
+// narrowTitleW and narrowConnW are the logical widths below which the header drops
+// the name, then the connection chip, to keep the selectors on screen.
+const (
+	narrowTitleW = 900
+	narrowConnW  = 700
+)
 
 // wideHeaderW is the logical width from which the header has room for the model
 // chips beside the search.
@@ -562,7 +621,7 @@ func (s *Scene) buildPanel() {
 	side := toolkit.NewVBox()
 	side.Spacing = px(gap / 2)
 	side.AddFixed(bar, px(controlsH))
-	side.AddFlex(s.stack(card("Sessions", sessions, cardPad), card("Details", details, cardPad)), 1)
+	side.AddFlex(s.stack(card(T("card.sessions"), sessions, cardPad), card(T("card.details"), details, cardPad)), 1)
 	s.panel = card("", side, cardPad)
 	s.panelFocus = []toolkit.Widget{s.table, s.detail, s.ctxTable, s.closeBtn, s.stateDD, s.lastDD, s.repoDD, s.clearBtn}
 	for _, c := range s.modelChecks {
@@ -632,8 +691,8 @@ func (s *Scene) dock() {
 func tokens2(s *Scene, px func(int) int) toolkit.Widget {
 	h := toolkit.NewHBox()
 	h.Spacing = px(gap)
-	h.AddFlex(card("Output tokens", s.outBars, cardPad), 1)
-	h.AddFlex(card("Cache-read tokens", s.cacheBars, cardPad), 1)
+	h.AddFlex(card(T("card.output"), s.outBars, cardPad), 1)
+	h.AddFlex(card(T("card.cache"), s.cacheBars, cardPad), 1)
 	return h
 }
 
@@ -646,16 +705,16 @@ func (s *Scene) quotaPage() toolkit.Widget {
 	// then the token kind of the 4 x 7 days span.
 	first := toolkit.NewHBox()
 	first.Spacing = px(gap / 2)
-	first.AddFixed(toolkit.NewLabel("account"), px(64))
+	first.AddFixed(toolkit.NewLabel(T("lbl.account")), px(64))
 	first.AddFlex(s.accountDD, 1)
 	first.AddFixed(toolkit.NewLabel(""), px(gap))
-	first.AddFixed(toolkit.NewLabel("span"), px(48))
+	first.AddFixed(toolkit.NewLabel(T("lbl.span")), px(48))
 	for _, r := range s.spanRadios {
 		first.AddFixed(r, px(radioW))
 	}
 	second := toolkit.NewHBox()
 	second.Spacing = px(gap / 2)
-	second.AddFixed(toolkit.NewLabel("tokens (4 x 7 days)"), px(150))
+	second.AddFixed(toolkit.NewLabel(T("quota.tokens")), px(150))
 	for _, r := range s.kindRadios {
 		second.AddFixed(r, px(radioW))
 	}
@@ -670,34 +729,34 @@ func (s *Scene) quotaPage() toolkit.Widget {
 
 	tokens := toolkit.NewHBox()
 	tokens.Spacing = px(gap)
-	tokens.AddFlex(card("Output tokens", s.outBars, cardPad), 1)
-	tokens.AddFlex(card("Cache-read tokens", s.cacheBars, cardPad), 1)
+	tokens.AddFlex(card(T("card.output"), s.outBars, cardPad), 1)
+	tokens.AddFlex(card(T("card.cache"), s.cacheBars, cardPad), 1)
 	rng := toolkit.NewVBox()
 	rng.Spacing = px(gap)
-	rng.AddFlex(card("Official usage (% of each window)", s.official, cardPad), 3)
+	rng.AddFlex(card(T("card.official"), s.official, cardPad), 3)
 	rng.AddFlex(tokens, 2)
 
 	upper := toolkit.NewHBox()
 	upper.Spacing = px(gap)
-	upper.AddFlex(card("Tokens per week", s.weekBars, cardPad), 1)
-	upper.AddFlex(card("Cumulative tokens by day of the week", s.cum, cardPad), 1)
+	upper.AddFlex(card(T("card.weekly"), s.weekBars, cardPad), 1)
+	upper.AddFlex(card(T("card.cumulative"), s.cum, cardPad), 1)
 	wk := toolkit.NewVBox()
 	wk.Spacing = px(gap)
 	wk.AddFlex(upper, 3)
-	wk.AddFlex(card("Official weekly % (recorded)", s.weekPct, cardPad), 2)
+	wk.AddFlex(card(T("card.weekpct"), s.weekPct, cardPad), 2)
 
 	// The aggregated layouts add the capacity table (every account's 5 h and
 	// weekly percentages side by side) under the charts.
-	capCard := func() *toolkit.Frame { return card("Accounts: usage and capacity left", s.capTable, cardPad) }
+	capCard := func() *toolkit.Frame { return card(T("card.accounts"), s.capTable, cardPad) }
 	allRange := toolkit.NewVBox()
 	allRange.Spacing = px(gap)
-	allRange.AddFlex(card("Official usage by account (% of each window)", s.official, cardPad), 5)
+	allRange.AddFlex(card(T("card.officialby"), s.official, cardPad), 5)
 	allRange.AddFlex(tokens2(s, px), 4)
 	allRange.AddFlex(capCard(), 3)
 	allUpper := toolkit.NewHBox()
 	allUpper.Spacing = px(gap)
-	allUpper.AddFlex(card("Tokens per calendar day, all accounts", s.weekBars, cardPad), 1)
-	allUpper.AddFlex(card("Official weekly % by account, each account's resets marked", s.weekPct, cardPad), 1)
+	allUpper.AddFlex(card(T("card.perday"), s.weekBars, cardPad), 1)
+	allUpper.AddFlex(card(T("card.weekpctby"), s.weekPct, cardPad), 1)
 	allWeeks := toolkit.NewVBox()
 	allWeeks.Spacing = px(gap)
 	allWeeks.AddFlex(allUpper, 5)
@@ -855,7 +914,7 @@ func (s *Scene) targets() []toolkit.Widget {
 		}
 		t = append(t, s.table, s.ctxTable, s.detail)
 	}
-	t = append(t, s.search, s.expired, s.toggle, s.tabs)
+	t = append(t, s.search, s.expired, s.themeDD, s.langDD, s.toggle, s.tabs)
 	switch s.vm.Tab.Get() {
 	case TabGraph:
 		return append(t, s.graph)
@@ -896,7 +955,7 @@ func (s *Scene) HandleClick(x, y int) bool {
 
 // dropDowns are the drop-downs, whose open lists take the next click.
 func (s *Scene) dropDowns() []*toolkit.DropDown {
-	return []*toolkit.DropDown{s.accountDD, s.gDecision, s.stateDD, s.lastDD, s.repoDD}
+	return []*toolkit.DropDown{s.themeDD, s.langDD, s.accountDD, s.gDecision, s.stateDD, s.lastDD, s.repoDD}
 }
 
 // clickDialog gives a click to the open dialog; a click outside it is

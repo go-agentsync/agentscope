@@ -11,14 +11,14 @@ import (
 
 // AllAccounts is the first option of the account selector: every account,
 // aggregated.
-const AllAccounts = "All (aggregated)"
+func AllAccounts() string { return T("all.accounts") }
 
 // accountName is how an account is named on screen: the label aiquota gives it,
 // its plan and a short hash of its key. Never its e-mail or its id, which the
 // server does not even send.
 func accountName(a model.AccountUsage) string {
 	if a.Key == "" {
-		return "unknown account (recorded before accounts were told apart)"
+		return T("acct.unknownrec")
 	}
 	return accountTag(a.Key, a.Label, a.Plan, a.Alias)
 }
@@ -27,13 +27,13 @@ func accountName(a model.AccountUsage) string {
 // replaces the label everywhere), else "label (plan) #hash".
 func accountTag(key, label, plan, alias string) string {
 	if key == "" {
-		return "unknown account"
+		return T("acct.unknown")
 	}
 	if alias != "" {
 		return alias
 	}
 	if label == "" {
-		label = "account"
+		label = T("acct.account")
 	}
 	if plan != "" {
 		label += " (" + plan + ")"
@@ -44,14 +44,14 @@ func accountTag(key, label, plan, alias string) string {
 // AccountOptions are the selector's options: All, then every account, the active
 // one marked.
 func AccountOptions(u *model.Usage) []string {
-	out := []string{AllAccounts}
+	out := []string{AllAccounts()}
 	if u == nil {
 		return out
 	}
 	for _, a := range u.Accounts {
 		n := accountName(a)
 		if a.Active {
-			n += " - active"
+			n += T("acct.activemark")
 		}
 		out = append(out, n)
 	}
@@ -70,7 +70,7 @@ func (r CapRow) Cells() []string {
 
 func pct(ok bool, v float64) string {
 	if !ok {
-		return "n/a"
+		return T("cap.na")
 	}
 	return fmt.Sprintf("%.0f %%", v)
 }
@@ -88,15 +88,15 @@ func capacityRows(c model.Capacity) []CapRow {
 		r := CapRow{Account: accountTag(it.Key, it.Label, "", it.Alias), Plan: plan, Session: pct(it.SessionOK, it.Session), Weekly: pct(it.WeeklyOK, it.Weekly), Left: "-", Resets: "-"}
 		switch {
 		case it.Unknown:
-			r.Left = "not counted"
+			r.Left = T("cap.notcounted")
 		case it.Stale:
-			r.Weekly = "stale"
+			r.Weekly = T("cap.stale")
 		case it.WeeklyOK:
 			r.Left = fmt.Sprintf("%.2f", (100-it.Weekly)/100)
 			r.Resets = dayTime(it.NextReset)
 		}
 		if it.Active {
-			r.Active = "active"
+			r.Active = T("cap.yes")
 		}
 		rows = append(rows, r)
 	}

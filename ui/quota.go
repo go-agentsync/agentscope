@@ -24,10 +24,10 @@ const (
 )
 
 // SpanNames and KindNames label the selectors.
-var (
-	SpanNames = []string{"5 h", "7 days", "4 x 7 days"}
-	KindNames = []string{"output", "cache read"}
-)
+func SpanNames() []string { return []string{T("span.5h"), T("span.7d"), T("span.4x7d")} }
+
+// KindNames are the token kinds, in the language in use.
+func KindNames() []string { return []string{T("kind.out"), T("kind.cache")} }
 
 const (
 	day      = 24 * 3600

@@ -22,6 +22,40 @@ var enMsgs = map[string]string{
 	"lang.name.fr":   "Français",
 	"status.waiting": "waiting for the collector...",
 
+	"row.active": "ACTIVE",
+	"row.idle":   "idle",
+	"row.notr":   "no tr.",
+
+	"conn.connecting":  "connecting",
+	"conn.connected":   "connected",
+	"conn.dial":        "cannot dial",
+	"conn.lost":        "lost",
+	"conn.ended":       "stream ended",
+	"err.notconnected": "not connected to the server",
+
+	"dec.all":       "All decisions",
+	"gcol.lesson":   "Lesson",
+	"gcol.recur":    "Recur.",
+	"gcol.last":     "Last",
+	"gcol.decision": "Decision",
+	"gcol.gate":     "Gate",
+	"gcol.after":    "After gate",
+	"gcol.flag":     "Flag",
+
+	"lbl.account":  "account",
+	"lbl.span":     "span",
+	"lbl.decision": "decision",
+
+	"cap.na":         "n/a",
+	"cap.stale":      "stale",
+	"cap.notcounted": "not counted",
+	"cap.yes":        "active",
+
+	"acct.unknownrec": "unknown account (recorded before accounts were told apart)",
+	"acct.unknown":    "unknown account",
+	"acct.account":    "account",
+	"acct.activemark": " - active",
+
 	"panel.title":    "Sessions and details",
 	"card.sessions":  "Sessions",
 	"card.details":   "Details",
@@ -109,6 +143,40 @@ var frMsgs = map[string]string{
 	"lang.name.en":   "English",
 	"lang.name.fr":   "Français",
 	"status.waiting": "en attente du collecteur...",
+
+	"row.active": "ACTIVE",
+	"row.idle":   "inactive",
+	"row.notr":   "sans tr.",
+
+	"conn.connecting":  "connexion",
+	"conn.connected":   "connecté",
+	"conn.dial":        "connexion impossible",
+	"conn.lost":        "perdue",
+	"conn.ended":       "flux terminé",
+	"err.notconnected": "non connecté au serveur",
+
+	"dec.all":       "Toutes les décisions",
+	"gcol.lesson":   "Leçon",
+	"gcol.recur":    "Récid.",
+	"gcol.last":     "Dernière",
+	"gcol.decision": "Décision",
+	"gcol.gate":     "Porte",
+	"gcol.after":    "Après la porte",
+	"gcol.flag":     "Drapeau",
+
+	"lbl.account":  "compte",
+	"lbl.span":     "durée",
+	"lbl.decision": "décision",
+
+	"cap.na":         "n/d",
+	"cap.stale":      "périmé",
+	"cap.notcounted": "non compté",
+	"cap.yes":        "actif",
+
+	"acct.unknownrec": "compte inconnu (enregistré avant que les comptes soient distingués)",
+	"acct.unknown":    "compte inconnu",
+	"acct.account":    "compte",
+	"acct.activemark": " - actif",
 
 	"panel.title":    "Sessions et détails",
 	"card.sessions":  "Sessions",

@@ -125,7 +125,7 @@ func TestGuardRowCellsShowTheGateTruncatedAndTheInferredAndTheFlag(t *testing.T)
 		}
 	}
 	c := leaky.Cells()
-	if len(c) != len(GuardTitles) || c[GColAfter] != "2 (1 inferred)" || c[GColLast] != "2026-11-19" || c[GColFlag] != "" || len(c[GColGate]) > guardGateChars+3 || strings.Contains(c[GColGate], "\n") {
+	if len(c) != len(GuardTitles()) || c[GColAfter] != "2 (1 inferred)" || c[GColLast] != "2026-11-19" || c[GColFlag] != "" || len(c[GColGate]) > guardGateChars+3 || strings.Contains(c[GColGate], "\n") {
 		t.Fatalf("%q", c)
 	}
 	if c := silent.Cells(); c[GColFlag] != "SILENT" || c[GColAfter] != "0" {

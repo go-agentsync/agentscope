@@ -150,25 +150,31 @@ type ViewModel struct {
 	// Color is the Colour action of the same table: the dialog that gives the
 	// selected account a colour of its own (see colorstate.go).
 	Color *ColorState
+	// Prefs is the viewer's theme and language (see prefs.go): Dark below follows
+	// it, and so does every text the screen shows.
+	Prefs *PrefsState
 
-	usageSig string // a hash of the Usage last set, "" for none
-	snap     model.Snapshot
-	have     bool
-	allRows  []Row
-	notDrawn string
-	gd       graphData // the graph as built from the last snapshot
+	connKey, connDetail string // the connection state SetConn last showed
+	usageSig            string // a hash of the Usage last set, "" for none
+	snap                model.Snapshot
+	have                bool
+	allRows             []Row
+	notDrawn            string
+	gd                  graphData // the graph as built from the last snapshot
 }
 
 // NewViewModel returns a ViewModel showing nothing yet.
 func NewViewModel() *ViewModel {
+	toolkit.SetLocalizer(nil) // a new screen starts in English, whatever language the last one was left in
 	vm := &ViewModel{
 		Graph:    toolkit.NewGraphViewModel(),
 		Query:    mvvm.NewObservable(""),
 		Rows:     mvvm.NewObservableList[Row](),
 		TableSel: mvvm.NewObservable(-1),
 		Detail:   mvvm.NewObservableList[string](),
-		Status:   mvvm.NewObservable("waiting for the collector..."),
-		Conn:     mvvm.NewObservable("connecting"),
+		Status:   mvvm.NewObservable(T("status.waiting")),
+		Conn:     mvvm.NewObservable(T("conn.connecting")),
+		connKey:  "connecting",
 
 		ShowExpired: mvvm.NewObservable(false),
 		Dark:        mvvm.NewObservable(false),
@@ -183,7 +189,7 @@ func NewViewModel() *ViewModel {
 		QuotaNotes:     mvvm.NewObservable(""),
 		Account:        mvvm.NewObservable(0),
 		selKey:         allKey,
-		AccountOptions: mvvm.NewObservableList(AllAccounts),
+		AccountOptions: mvvm.NewObservableList(AllAccounts()),
 		Capacity:       mvvm.NewObservableList[CapRow](),
 
 		Contexts: mvvm.NewObservableList[CtxRow](),
@@ -201,6 +207,7 @@ func NewViewModel() *ViewModel {
 	vm.Filters = newFilters(vm.refreshRows)
 	vm.Rename = newRenameState(vm)
 	vm.Color = newColorState(vm)
+	vm.Prefs = newPrefsState(vm)
 	// A width the owner (or a store) sets is held to the bounds at once. A surface
 	// that gets narrower does NOT rewrite it: the panel is only shown within the
 	// bounds (EffectivePanelW), so widening the window brings the chosen width back.
@@ -277,6 +284,9 @@ func (vm *ViewModel) Snapshot() (model.Snapshot, bool) { return vm.snap, vm.have
 // whose members did not change does not lay itself out again.
 func (vm *ViewModel) Apply(s model.Snapshot) {
 	vm.snap, vm.have = s, true
+	if s.Usage != nil {
+		vm.Prefs.Apply(s.Usage.Prefs) // may change the language, which applies the snapshot again
+	}
 	vm.Guard.Data.Set(s.Guardrails)
 	// A new Usage value with the same content is not a change: setting it would
 	// rebuild every chart and repaint the Quota tab for nothing.
@@ -303,6 +313,32 @@ func (vm *ViewModel) Apply(s model.Snapshot) {
 		chip.Set(text)
 	}
 	vm.refreshStatus()
+}
+
+// SetConn shows the connection state: key is one of "connecting", "connected",
+// "dial", "lost" or "ended" (the catalog's conn.<key>), detail what went wrong, if
+// anything. It is kept, so a change of language says it again in the new one.
+func (vm *ViewModel) SetConn(key, detail string) {
+	vm.connKey, vm.connDetail = key, detail
+	text := T("conn." + key)
+	if detail != "" {
+		text += ": " + detail
+	}
+	vm.Conn.Set(text)
+}
+
+// relocalize rebuilds every text the ViewModel holds, in the language that has just
+// been put in force: the account options, the repository options, and (with a
+// snapshot) the rows, the chips, the details and the status line.
+func (vm *ViewModel) relocalize() {
+	vm.SetConn(vm.connKey, vm.connDetail)
+	if vm.have {
+		vm.Apply(vm.snap)
+		return
+	}
+	vm.Status.Set(T("status.waiting"))
+	vm.onUsage()
+	vm.Filters.sync(nil)
 }
 
 // rebuildGraph maps the last snapshot onto the graph, with the orgs that are
@@ -346,12 +382,12 @@ func (vm *ViewModel) CollapseAll() { vm.Expanded.Clear() }
 
 // row builds a session's table row.
 func (vm *ViewModel) row(s model.Snapshot, se model.Session) Row {
-	state := "idle"
+	state := T("row.idle")
 	switch {
 	case !se.HasTranscript:
-		state = "no tr."
+		state = T("row.notr")
 	case se.Active:
-		state = "ACTIVE"
+		state = T("row.active")
 	}
 	var repos []string
 	for _, l := range s.LeasesOf(se.ID) {
@@ -377,7 +413,7 @@ func (vm *ViewModel) row(s model.Snapshot, se model.Session) Row {
 	}
 	c := ctxOf("", se.Context, windowOf(s))
 	return Row{ID: se.Short, State: state, Repo: repo, Task: s.Task(se), Last: ago(s.At, se.LastActivity), Agent: strconv.Itoa(len(se.Agents)), Model: modelShort(se.Model),
-		CtxText: c.Text, Ratio: c.Ratio, Band: c.Band, Repos: strings.Join(uniq(all), "\n"), Active: state == "ACTIVE", Age: age}
+		CtxText: c.Text, Ratio: c.Ratio, Band: c.Band, Repos: strings.Join(uniq(all), "\n"), Active: se.HasTranscript && se.Active, Age: age}
 }
 
 // neverActive is the age of a session with no recorded activity: older than any

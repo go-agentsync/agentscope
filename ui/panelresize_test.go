@@ -225,7 +225,7 @@ func TestColumnWidthsAreViewModelStateWithAMinimumPerColumn(t *testing.T) {
 	for col, min := range ColMin {
 		vm.SetColWidth(col, 1)
 		if vm.ColW.At(col) != min {
-			t.Errorf("column %d (%s): %d, want its minimum %d", col, ColTitles[col], vm.ColW.At(col), min)
+			t.Errorf("column %d (%s): %d, want its minimum %d", col, ColTitles()[col], vm.ColW.At(col), min)
 		}
 		vm.SetColWidth(col, min+30)
 		if vm.ColW.At(col) != min+30 {

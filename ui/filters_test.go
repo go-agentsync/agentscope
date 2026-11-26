@@ -70,7 +70,7 @@ func TestLastActivityFilterKeepsWhatIsYoungerThanItsLimit(t *testing.T) {
 	} {
 		vm.Filters.Last.Set(c.i)
 		if got := shown(vm); got != c.want {
-			t.Errorf("%s: %s, want %s", LastNames[c.i], got, c.want)
+			t.Errorf("%s: %s, want %s", LastNames()[c.i], got, c.want)
 		}
 	}
 	// A boundary: exactly the limit is not younger than it.
@@ -92,7 +92,7 @@ func TestRepositoryFilterMatchesAnyRepoOfASession(t *testing.T) {
 	vm := NewViewModel()
 	vm.Apply(filterSnap())
 	opts := vm.Filters.RepoOptions.Slice()
-	if len(opts) != 5 || opts[0] != AllRepos || opts[1] != "o/a" || opts[2] != "o/b" {
+	if len(opts) != 5 || opts[0] != AllRepos() || opts[1] != "o/a" || opts[2] != "o/b" {
 		t.Fatalf("%v", opts)
 	}
 	vm.Filters.Repo.Set(2) // o/b: held by A, and the cwd repo of B

@@ -14,8 +14,9 @@ import (
 // there are none). They are device pixels (the Table does not scale a column's
 // width). The table scrolls sideways when they add up to more than the panel.
 func tableColumns(scale float64, widths []int) []toolkit.TableColumn {
-	cols := make([]toolkit.TableColumn, len(ColTitles))
-	for i, t := range ColTitles {
+	titles := ColTitles()
+	cols := make([]toolkit.TableColumn, len(titles))
+	for i, t := range titles {
 		lw := ColDefault[i]
 		if i < len(widths) {
 			lw = widths[i]
@@ -33,15 +34,15 @@ func (s *Scene) applyMetrics() {
 	s.title.FontSize = s.px(20)
 	s.capTable.Columns = capColumns(s.scale)
 	s.gTable.Columns = guardColumns(s.scale)
-	s.ctxTable.Columns = []toolkit.TableColumn{{Title: "Context of", Width: s.px(170)}, {Title: "Context"}}
+	s.ctxTable.Columns = []toolkit.TableColumn{{Title: T("ctx.of"), Width: s.px(170)}, {Title: T("ctx.context")}}
 }
 
 // capColumns are the capacity table's columns, in device pixels.
 func capColumns(scale float64) []toolkit.TableColumn {
 	w := func(v int) int { return int(float64(v)*scale + 0.5) }
 	return []toolkit.TableColumn{
-		{Title: "Account"}, {Title: "Plan", Width: w(70)}, {Title: "5 h", Width: w(70)}, {Title: "Weekly", Width: w(70)},
-		{Title: "Weeks left", Width: w(90)}, {Title: "Weekly reset", Width: w(170)}, {Title: "Active", Width: w(70)},
+		{Title: T("cap.account")}, {Title: T("cap.plan"), Width: w(70)}, {Title: T("cap.5h"), Width: w(70)}, {Title: T("cap.weekly"), Width: w(70)},
+		{Title: T("cap.weeksleft"), Width: w(90)}, {Title: T("cap.reset"), Width: w(170)}, {Title: T("cap.active"), Width: w(70)},
 	}
 }
 

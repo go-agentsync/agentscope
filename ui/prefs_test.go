@@ -81,11 +81,36 @@ func TestLanguageChoiceTranslatesAndIsSent(t *testing.T) {
 func TestSameLanguageIsNotApplyTwice(t *testing.T) {
 	resetLang(t)
 	vm := NewViewModel()
-	n := 0
-	vm.Prefs.Lang.SubscribeChanged(func() { n++ })
+	vm.Status.Set("kept")                   // a re-localisation would put the waiting text back
 	vm.Prefs.SetNavLangs([]string{"en-GB"}) // already English
-	if n != 0 {
-		t.Fatalf("the language was re-applied %d times", n)
+	if vm.Status.Get() != "kept" {
+		t.Fatalf("the language was re-applied: %q", vm.Status.Get())
+	}
+}
+
+func TestChoiceWithoutAHostDoesNotPanic(t *testing.T) {
+	resetLang(t)
+	vm := NewViewModel() // no Send: the host has not set it
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("a choice with no Send panicked: %v", r)
+		}
+	}()
+	vm.Prefs.ThemeSel.Set(2)
+	vm.Prefs.LangSel.Set(2)
+}
+
+func TestLanguageSwitchKeepsTheSnapshotsStatus(t *testing.T) {
+	resetLang(t)
+	vm := NewViewModel()
+	vm.Apply(withUsage(snap()))
+	live := vm.Status.Get()
+	if live == T("status.waiting") {
+		t.Fatal("a snapshot must replace the waiting text")
+	}
+	vm.Prefs.LangSel.Set(2)
+	if vm.Status.Get() == "en attente du collecteur..." {
+		t.Fatal("the switch discarded the snapshot and showed the waiting text")
 	}
 }
 

@@ -216,9 +216,31 @@ func main() {
 	// The system's light/dark preference drives the Slate variant, now and when
 	// it changes.
 	dark := js.Global().Call("matchMedia", "(prefers-color-scheme: dark)")
-	follow := func() { do(func() bool { scene.VM().Dark.Set(dark.Get("matches").Bool()); return true }) }
+	follow := func() { do(func() bool { scene.VM().Prefs.SetSystemDark(dark.Get("matches").Bool()); return true }) }
 	dark.Call("addEventListener", "change", js.FuncOf(func(js.Value, []js.Value) any { follow(); return nil }))
 	follow()
+	// The browser's languages, most preferred first, pick the language while the
+	// choice is Auto.
+	var navLangs []string
+	if ls := js.Global().Get("navigator").Get("languages"); ls.Truthy() {
+		for i := 0; i < ls.Length(); i++ {
+			navLangs = append(navLangs, ls.Index(i).String())
+		}
+	}
+	do(func() bool { scene.VM().Prefs.SetNavLangs(navLangs); return true })
+	// The theme and language choices are the owner's: kept by the server, sent the
+	// same way as a colour.
+	scene.VM().Prefs.Send = func(theme, lang string) {
+		go func() {
+			c := conn.Load()
+			if c == nil {
+				return // not connected: the choice stays on this page until the next change
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = c.SetPrefs(ctx, theme, lang)
+		}()
+	}
 	// The Rename dialog asks the server over the same connection as the stream. The
 	// request goes out from its own goroutine: the browser's event loop has to
 	// keep running for it to be sent, so the click handler must not wait for it.
@@ -226,7 +248,7 @@ func main() {
 		go func() {
 			var err error
 			if c := conn.Load(); c == nil {
-				err = errors.New("not connected to the server")
+				err = errors.New(ui.T("err.notconnected"))
 			} else {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
@@ -240,7 +262,7 @@ func main() {
 		go func() {
 			var err error
 			if c := conn.Load(); c == nil {
-				err = errors.New("not connected to the server")
+				err = errors.New(ui.T("err.notconnected"))
 			} else {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
@@ -292,15 +314,15 @@ func watch(scene *ui.Scene, feed *ui.Feed, do func(func() bool)) {
 		scheme = "wss://"
 	}
 	url := scheme + loc.Get("host").String() + "/grpc"
-	status := func(s string) { do(func() bool { scene.VM().Conn.Set(s); return false }) }
+	status := func(key, detail string) { do(func() bool { scene.VM().SetConn(key, detail); return false }) }
 	for {
 		c, err := wire.Dial(url)
 		if err != nil {
-			status("cannot dial: " + err.Error())
+			status("dial", err.Error())
 			time.Sleep(3 * time.Second)
 			continue
 		}
-		status("connected")
+		status("connected", "")
 		conn.Store(c)
 		err = c.Watch(context.Background(), func(s model.Snapshot) {
 			do(func() bool { feed.Offer(s); return false })
@@ -308,9 +330,9 @@ func watch(scene *ui.Scene, feed *ui.Feed, do func(func() bool)) {
 		conn.Store(nil)
 		_ = c.Close()
 		if err != nil {
-			status("lost: " + err.Error())
+			status("lost", err.Error())
 		} else {
-			status("stream ended")
+			status("ended", "")
 		}
 		time.Sleep(2 * time.Second)
 	}

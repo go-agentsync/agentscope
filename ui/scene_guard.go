@@ -11,8 +11,9 @@ import (
 func guardColumns(scale float64) []toolkit.TableColumn {
 	w := func(v int) int { return int(float64(v)*scale + 0.5) }
 	widths := []int{0, w(54), w(92), w(76), 0, w(130), w(76)}
-	cols := make([]toolkit.TableColumn, len(GuardTitles))
-	for i, t := range GuardTitles {
+	titles := GuardTitles()
+	cols := make([]toolkit.TableColumn, len(titles))
+	for i, t := range titles {
 		cols[i] = toolkit.TableColumn{Title: t, Width: widths[i], Sortable: true}
 	}
 	return cols
@@ -27,7 +28,7 @@ func (s *Scene) buildGuardWidgets() {
 	// A click selects a row only while MultiSelect is on (go-widgets/toolkit#595).
 	s.gTable.MultiSelect = true
 	s.gDetail = toolkit.NewWrapList(nil)
-	s.gDecision = toolkit.NewDropDown(DecisionNames, 0)
+	s.gDecision = toolkit.NewDropDown(DecisionNames(), 0)
 	for i := range s.gChips {
 		s.gChips[i] = toolkit.NewChip("")
 		s.gChips[i].Style = toolkit.ChipPlain
@@ -86,18 +87,18 @@ func (s *Scene) guardPage() toolkit.Widget {
 	for _, c := range s.gChips {
 		top.AddFlex(c, 1)
 	}
-	top.AddFixed(toolkit.NewLabel("decision"), px(72))
+	top.AddFixed(toolkit.NewLabel(T("lbl.decision")), px(72))
 	top.AddFixed(s.gDecision, px(150))
 
 	charts := toolkit.NewHBox()
 	charts.Spacing = px(gap)
-	charts.AddFlex(card("Recurrences per week (dashed lines: a gate landed)", s.gRec, cardPad), 1)
-	charts.AddFlex(card("Gate refusals per week, by gate", s.gBars, cardPad), 1)
+	charts.AddFlex(card(T("guard.recurrences"), s.gRec, cardPad), 1)
+	charts.AddFlex(card(T("guard.refusals"), s.gBars, cardPad), 1)
 
 	lower := toolkit.NewHBox()
 	lower.Spacing = px(gap)
-	lower.AddFlex(card("Lessons", s.gTable, cardPad), 3)
-	lower.AddFlex(card("Selected lesson", s.gDetail, cardPad), 2)
+	lower.AddFlex(card(T("guard.lessons"), s.gTable, cardPad), 3)
+	lower.AddFlex(card(T("guard.selected"), s.gDetail, cardPad), 2)
 
 	page := toolkit.NewVBox()
 	page.Spacing = px(gap)

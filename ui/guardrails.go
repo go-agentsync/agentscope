@@ -12,12 +12,22 @@ import (
 	"github.com/go-widgets/toolkit"
 )
 
-// The Guardrails tab's decision filter: DecisionNames[0] is every decision, the
-// others are the decisions the ledger records.
-var DecisionNames = []string{"All decisions", "gate", "pending", "no-gate", "untriaged", "none"}
+// The Guardrails tab's decision filter: the first option is every decision, the
+// others are the decisions the ledger records, whose names are the ledger's own
+// words (decisionTokens[0] is unused).
+var decisionTokens = []string{"", "gate", "pending", "no-gate", "untriaged", "none"}
 
-// GuardTitles are the lessons table's column titles; the columns are sortable.
-var GuardTitles = []string{"Lesson", "Recur.", "Last", "Decision", "Gate", "After gate", "Flag"}
+// DecisionNames are the filter's options: "All decisions" in the language in use,
+// then the ledger's words.
+func DecisionNames() []string {
+	return append([]string{T("dec.all")}, decisionTokens[1:]...)
+}
+
+// GuardTitles are the lessons table's column titles, in the language in use; the
+// columns are sortable.
+func GuardTitles() []string {
+	return []string{T("gcol.lesson"), T("gcol.recur"), T("gcol.last"), T("gcol.decision"), T("gcol.gate"), T("gcol.after"), T("gcol.flag")}
+}
 
 // The columns of the lessons table.
 const (
@@ -76,8 +86,10 @@ type GuardState struct {
 	Detail *mvvm.ObservableList[string]
 	// Decision indexes DecisionNames; SortCol and SortAsc order the table.
 	Decision *mvvm.Observable[int]
-	SortCol  *mvvm.Observable[int]
-	SortAsc  *mvvm.Observable[bool]
+	// DecisionOpts are the decision drop-down's options, in the language in use.
+	DecisionOpts *mvvm.ObservableList[string]
+	SortCol      *mvvm.Observable[int]
+	SortAsc      *mvvm.Observable[bool]
 	// Chips are the headline chips; Notes the line under the tab, which says what
 	// is not measured.
 	Chips [GuardChipSlots]*mvvm.Observable[string]
@@ -89,7 +101,7 @@ func newGuardState() *GuardState {
 	g := &GuardState{
 		Data: mvvm.NewObservable[*model.Guardrails](nil), Rows: mvvm.NewObservableList[GuardRow](),
 		Sel: mvvm.NewObservable(-1), Detail: mvvm.NewObservableList[string](),
-		Decision: mvvm.NewObservable(0), SortCol: mvvm.NewObservable(GColAfter), SortAsc: mvvm.NewObservable(false),
+		Decision: mvvm.NewObservable(0), DecisionOpts: mvvm.NewObservableList(DecisionNames()...), SortCol: mvvm.NewObservable(GColAfter), SortAsc: mvvm.NewObservable(false),
 		Notes: mvvm.NewObservable("reading the ledger and the transcripts..."),
 	}
 	for i := range g.Chips {
@@ -137,8 +149,8 @@ func (g *GuardState) refreshRows() {
 		keep = g.Rows.At(i).Name
 	}
 	want := ""
-	if d := g.Decision.Get(); d > 0 && d < len(DecisionNames) {
-		want = DecisionNames[d]
+	if d := g.Decision.Get(); d > 0 && d < len(decisionTokens) {
+		want = decisionTokens[d]
 	}
 	var rows []GuardRow
 	for _, r := range g.rows {

@@ -96,7 +96,7 @@ func (c *ColorState) send(color string) {
 		return
 	}
 	if c.Send == nil {
-		c.Err.Set("this view cannot colour accounts")
+		c.Err.Set(T("colour.unsupported"))
 		return
 	}
 	c.Err.Set("")

@@ -86,6 +86,7 @@ no Go toolchain.`,
 			hub := wire.NewHub(usage.Source{Inner: collect.New(o), Eng: eng}, interval, 10*time.Second)
 			hub.SetRenamer(eng)
 			hub.SetColorer(eng)
+			hub.SetPrefser(eng)
 			srv, err := serve.New(serve.Config{Addr: addr, Web: ui, Scope: hub})
 			if err != nil {
 				return err

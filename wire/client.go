@@ -58,6 +58,13 @@ func (c *Client) SetColor(ctx context.Context, key, color string) error {
 	return c.cc.Invoke(ctx, methodSetColor, &SetColorRequest{Key: key, Color: color}, &out)
 }
 
+// SetPrefs asks the server to keep the viewer's theme ("light", "dark",
+// "system" or "") and language (a tag, "" for automatic).
+func (c *Client) SetPrefs(ctx context.Context, theme, lang string) error {
+	var out Empty
+	return c.cc.Invoke(ctx, methodSetPrefs, &SetPrefsRequest{Theme: theme, Lang: lang}, &out)
+}
+
 // Rename asks the server to give an account a display name ("" removes it).
 func (c *Client) Rename(ctx context.Context, key, name string) error {
 	var out Empty

@@ -32,6 +32,7 @@ type Hub struct {
 	sentAt  time.Time
 	rename  Renamer
 	colorer Colorer
+	prefser Prefser
 }
 
 // NewHub returns a Hub that collects every `every` and republishes an
@@ -158,6 +159,34 @@ func (h *Hub) SetColor(_ context.Context, key, color string) error {
 		return errors.New("wire: this server does not colour accounts")
 	}
 	if err := c.SetColor(key, color); err != nil {
+		return err
+	}
+	h.Collect()
+	return nil
+}
+
+// Prefser is what keeps the viewer's theme and language; *usage.Engine is one.
+type Prefser interface {
+	SetPrefs(theme, lang string) error
+}
+
+// SetPrefser makes the hub serve SetPrefs through p. Without one it refuses.
+func (h *Hub) SetPrefser(p Prefser) {
+	h.mu.Lock()
+	h.prefser = p
+	h.mu.Unlock()
+}
+
+// SetPrefs implements Scope: it writes the choice and collects at once, so every
+// watching browser shows it without waiting for the next interval.
+func (h *Hub) SetPrefs(_ context.Context, theme, lang string) error {
+	h.mu.Lock()
+	p := h.prefser
+	h.mu.Unlock()
+	if p == nil {
+		return errors.New("wire: this server does not keep preferences")
+	}
+	if err := p.SetPrefs(theme, lang); err != nil {
 		return err
 	}
 	h.Collect()

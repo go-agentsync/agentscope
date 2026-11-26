@@ -27,10 +27,14 @@ func ClampPanelW(w, viewW int) int {
 // the bounds of the surface as it is now.
 func (vm *ViewModel) EffectivePanelW() int { return ClampPanelW(vm.PanelW.Get(), vm.ViewW.Get()) }
 
+// ColTitles are the sessions table's column titles, in the language in use.
+func ColTitles() []string {
+	return []string{T("col.state"), T("col.session"), T("col.context"), T("col.model"), T("col.repository"), T("col.task"), T("col.last"), T("col.agents")}
+}
+
 // The sessions table's columns: their titles, the least width each may be
 // dragged to, and the width each starts at, in logical pixels.
 var (
-	ColTitles  = []string{"State", "Session", "Context", "Model", "Repository", "Task", "Last", "Agents"}
 	ColMin     = []int{40, 50, 80, 50, 60, 60, 30, 44}
 	ColDefault = []int{56, 72, 104, 68, 96, 130, 40, 56}
 )

@@ -19,6 +19,8 @@ type Usage struct {
 	Active string `json:"active,omitempty"`
 	// QuotaErr is why aiquota could not be read, "" when it could.
 	QuotaErr string `json:"quotaErr,omitempty"`
+	// Prefs are the viewer's theme and language (settings.toml).
+	Prefs Prefs `json:"prefs"`
 
 	Accounts []AccountUsage `json:"accounts"`
 	Capacity Capacity       `json:"capacity"`

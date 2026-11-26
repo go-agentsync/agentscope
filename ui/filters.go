@@ -15,18 +15,23 @@ const (
 	StateIdle
 )
 
-// StateNames are the state drop-down's options, indexed by StateAll...
-var StateNames = []string{"All states", "Active", "Idle"}
+// StateNames are the state drop-down's options, indexed by StateAll..., in the
+// language in use.
+func StateNames() []string {
+	return []string{T("state.all"), T("state.active"), T("state.idle")}
+}
 
-// LastNames are the last-activity drop-down's options; LastLimits the age each
-// keeps (0: any), in the same order.
-var (
-	LastNames  = []string{"Any activity", "< 10 min", "< 1 h", "< 6 h", "< 24 h"}
-	LastLimits = []time.Duration{0, 10 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour}
-)
+// LastNames are the last-activity drop-down's options, in the language in use;
+// LastLimits the age each keeps (0: any), in the same order.
+func LastNames() []string {
+	return []string{T("last.any"), T("last.10m"), T("last.1h"), T("last.6h"), T("last.24h")}
+}
 
-// AllRepos is the first option of the repository drop-down.
-const AllRepos = "All repositories"
+// LastLimits is the age each LastNames option keeps (0: any).
+var LastLimits = []time.Duration{0, 10 * time.Minute, time.Hour, 6 * time.Hour, 24 * time.Hour}
+
+// AllRepos is the first option of the repository drop-down, in the language in use.
+func AllRepos() string { return T("repo.all") }
 
 // ModelFilterSlots is how many model names the filter row offers a check box
 // for: the most used ones present.
@@ -41,6 +46,9 @@ type Filters struct {
 	// RepoOptions. It follows its repository by name when the options change.
 	Repo        *mvvm.Observable[int]
 	RepoOptions *mvvm.ObservableList[string]
+	// StateOpts and LastOpts are the State and Last drop-downs' options, in the
+	// language in use.
+	StateOpts, LastOpts *mvvm.ObservableList[string]
 	// ModelLabels and ModelOn are the model check boxes: slot i is the i-th most
 	// used model present, "" when there are fewer. None checked is no model
 	// filter; checked ones are OR-ed among themselves, AND-ed with the rest.
@@ -58,8 +66,9 @@ type Filters struct {
 func newFilters(changed func()) *Filters {
 	f := &Filters{
 		State: mvvm.NewObservable(StateAll), Last: mvvm.NewObservable(0), Repo: mvvm.NewObservable(0),
-		RepoOptions: mvvm.NewObservableList(AllRepos),
-		models:      map[string]bool{}, changed: changed,
+		RepoOptions: mvvm.NewObservableList(AllRepos()),
+		StateOpts:   mvvm.NewObservableList(StateNames()...), LastOpts: mvvm.NewObservableList(LastNames()...),
+		models: map[string]bool{}, changed: changed,
 	}
 	for i := range f.ModelLabels {
 		f.ModelLabels[i], f.ModelOn[i] = mvvm.NewObservable(""), mvvm.NewObservable(false)
@@ -154,7 +163,7 @@ func (f *Filters) sync(rows []Row) {
 		repos = append(repos, r)
 	}
 	sort.Strings(repos)
-	setList(f.RepoOptions, append([]string{AllRepos}, repos...))
+	setList(f.RepoOptions, append([]string{AllRepos()}, repos...))
 	idx := 0
 	for i, r := range repos {
 		if r == f.repoSel {

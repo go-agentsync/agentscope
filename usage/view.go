@@ -43,6 +43,8 @@ type Input struct {
 	// Color is the colour the owner gave an account by key ("" for none); nil is
 	// none.
 	Color func(key string) string
+	// Prefs is the viewer's theme and language; the zero value is none chosen.
+	Prefs model.Prefs
 	// Stamps is the `stamp` hook's timeline: an account known only by its tokens
 	// takes its label and plan from its latest stamp.
 	Stamps accounts.Timeline
@@ -55,7 +57,7 @@ type Input struct {
 // capacity left.
 func Build(in Input, sc *Scanner) *model.Usage {
 	n := in.Now.Unix()
-	u := &model.Usage{At: n, Families: Families, Active: in.Active, QuotaErr: in.QuotaErr}
+	u := &model.Usage{At: n, Families: Families, Active: in.Active, QuotaErr: in.QuotaErr, Prefs: in.Prefs}
 
 	// Every reading, once: a live one is also in the history once it is recorded.
 	type rk struct {
@@ -352,6 +354,7 @@ type Engine struct {
 	stamps  *accounts.Stamps
 	aliases *accounts.Aliases
 	colors  *accounts.Colors
+	prefs   *accounts.Prefs
 	// org reads the organisation's name; nil unless --show-org.
 	org func() string
 
@@ -386,6 +389,7 @@ func NewEngine(claudeDir, cacheDir, configDir string, run quota.Runner) *Engine 
 		stamps:  accounts.NewStamps(configDir),
 		aliases: accounts.NewAliases(configDir),
 		colors:  accounts.NewColors(configDir),
+		prefs:   accounts.NewPrefs(configDir),
 	}
 }
 
@@ -449,10 +453,26 @@ func (e *Engine) SetColor(key, color string) error {
 	return nil
 }
 
+// SetPrefs stores the viewer's theme ("light", "dark", "system" or "") and
+// language (a tag or "" for automatic) and rebuilds the view so the next snapshot
+// carries them. It is what the UI's theme and language selectors call; the file
+// is written here, by the serve process, and a value that is neither is refused.
+func (e *Engine) SetPrefs(theme, lang string) error {
+	if err := e.prefs.Set(theme, lang); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.view != nil { // show it now, not at the next minute's pass
+		e.view.Prefs = e.prefs.Get()
+	}
+	return nil
+}
+
 // input is what Build needs besides the transcripts, at now. The caller holds
 // e.mu.
 func (e *Engine) input(now time.Time) Input {
-	in := Input{Now: now, Live: e.live, QuotaErr: e.quotaErr, Active: e.active(), Alias: e.aliases.Name, Color: e.colors.Color, Stamps: e.stamps.Load()}
+	in := Input{Now: now, Live: e.live, QuotaErr: e.quotaErr, Active: e.active(), Alias: e.aliases.Name, Color: e.colors.Color, Prefs: e.prefs.Get(), Stamps: e.stamps.Load()}
 	in.Hist, _ = e.store.Load()
 	if e.org != nil {
 		in.Suggest = e.org()

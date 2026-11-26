@@ -323,8 +323,16 @@ holds the Iconoir logo, the name, a **connection chip** and **model-count chips*
 the graph, the sessions table, the details and each chart sit on their own card. Nothing is
 drawn by hand in this repository: the cards are `Frame.Card`, the pills `Chip` with
 `ChipBrand` / `ChipPlain`, the nodes and clusters `GraphView` with `CornerRadius`.
-**Light and dark follow the system** (`prefers-color-scheme`, read by the wasm host
-and followed when it changes); the graph's category palette is the Okabe-Ito order
+**The theme is a choice**: the header's **Theme** selector offers System (the default:
+`prefers-color-scheme`, read by the wasm host and followed when it changes), Light and
+Dark, through the toolkit's `ThemeManager`. The **Language** selector offers Auto
+(the browser's `navigator.languages`, negotiated against the catalog), English and
+French; the interface's words live in `ui/i18n.go` (a `toolkit.Catalog`, kept
+complete by `i18ntest.Check`) and every selector, column title, button, dialog and
+chart title follows the language when it changes. Both choices are the owner's: the
+server keeps them in `settings.toml`, and a
+view that connects later opens in them. Texts built from the data (details, notes,
+anomaly messages) are still English; the graph's category palette is the Okabe-Ito order
 (colour-vision safe) with its lightness tuned per theme, which keeps the order but
 has not been run through a palette validator (none was at hand). The font is the
 toolkit's embedded one; it cannot load another.

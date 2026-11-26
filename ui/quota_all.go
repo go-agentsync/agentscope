@@ -183,7 +183,7 @@ func buildAll(u *model.Usage, span, kind int, dark bool) quotaView {
 				continue
 			}
 			if !w.Available {
-				notes = append(notes, Tf("q.acctUnavail", accountName(a), w.Label))
+				notes = append(notes, Tf("q.acctUnavail", accountName(a), windowLabel(w.Label)))
 				continue
 			}
 			target.Overlays = append(target.Overlays, toolkit.TimeLine{Name: accountTag(a.Key, "", "", a.Alias), Ink: ink, Points: pointsOf(w.History, start, end)})
@@ -207,7 +207,7 @@ func buildAll(u *model.Usage, span, kind int, dark bool) quotaView {
 		}
 	}
 	if len(target.Overlays) == 0 {
-		notes = append(notes, Tf("q.noWindow", label))
+		notes = append(notes, Tf("q.noWindow", windowLabel(label)))
 	}
 
 	if u.All.UnattributedOut > 0 || u.All.UnattributedCache > 0 {
@@ -219,6 +219,22 @@ func buildAll(u *model.Usage, span, kind int, dark bool) quotaView {
 	}
 	v.Notes = strings.Join(notes, "  |  ")
 	return v
+}
+
+// windowKeys are the catalog keys of the quota windows aiquota names.
+var windowKeys = map[string]string{quota.LabelSession: "w.session", quota.LabelWeek: "w.week"}
+
+// windowLabel is a quota window's name in the language in use: the two standard
+// ones, and "Weekly <model>" ones; a model name is a proper noun and stays.
+// Any other label is shown as aiquota gave it.
+func windowLabel(l string) string {
+	if k, ok := windowKeys[l]; ok {
+		return T(k)
+	}
+	if m, ok := strings.CutPrefix(l, "Weekly "); ok {
+		return Tf("w.weeklyOf", m)
+	}
+	return l
 }
 
 // markerLabel names a reset marker after its account, except the unknown one,

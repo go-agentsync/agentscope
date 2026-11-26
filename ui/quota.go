@@ -120,11 +120,11 @@ func buildAccountView(a model.AccountUsage, families []string, quotaErr string, 
 				continue
 			}
 			if !w.Available {
-				notes = append(notes, Tf("q.unavail", w.Label))
+				notes = append(notes, Tf("q.unavail", windowLabel(w.Label)))
 				continue
 			}
 			pts := pointsOf(w.History, start, end)
-			v.Official.Overlays = append(v.Official.Overlays, toolkit.TimeLine{Name: w.Label, Ink: cols[n%len(cols)], Points: pts})
+			v.Official.Overlays = append(v.Official.Overlays, toolkit.TimeLine{Name: windowLabel(w.Label), Ink: cols[n%len(cols)], Points: pts})
 			n++
 			if w.ResetsAt >= start && w.ResetsAt <= end {
 				v.Official.Markers = append(v.Official.Markers, toolkit.TimeMarker{At: w.ResetsAt, Label: Tf("q.resetAt", fmtT(w.ResetsAt)), Ink: cols[1]})
@@ -132,7 +132,7 @@ func buildAccountView(a model.AccountUsage, families []string, quotaErr string, 
 		}
 		for _, w := range a.Windows {
 			if w.Available && (w.Label == quota.LabelSession) == (span == SpanShort) && len(w.History) < 2 {
-				notes = append(notes, Tf("q.history", w.Label, recordingSince(a.RecordingSince)))
+				notes = append(notes, Tf("q.history", windowLabel(w.Label), recordingSince(a.RecordingSince)))
 			}
 		}
 		v.Out = barData{Layers: a.Short.Out, TimeMin: start, TimeMax: end, FormatTime: fmtT}

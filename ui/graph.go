@@ -324,7 +324,9 @@ func RepoLabel(key string, max int) string {
 	return model.Truncate(repo, max)
 }
 
-// ago renders the age of t at now: "now", "4m", "3h", "2d".
+// ago renders the age of t at now, in the language in use: "now", "4m", "3h",
+// "2d" in English; "maintenant", "4 min", "3 h", "2 j" in French. The units are
+// abbreviations, so they have no plural.
 func ago(now, t time.Time) string {
 	if t.IsZero() {
 		return "-"
@@ -332,11 +334,11 @@ func ago(now, t time.Time) string {
 	d := now.Sub(t)
 	switch {
 	case d < 45*time.Second:
-		return "now"
+		return T("ago.now")
 	case d < time.Hour:
-		return strconv.Itoa(int(d.Minutes())) + "m"
+		return Tf("ago.min", int(d.Minutes()))
 	case d < 48*time.Hour:
-		return strconv.Itoa(int(d.Hours())) + "h"
+		return Tf("ago.hour", int(d.Hours()))
 	}
-	return strconv.Itoa(int(d.Hours()/24)) + "d"
+	return Tf("ago.day", int(d.Hours()/24))
 }

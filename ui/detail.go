@@ -108,10 +108,31 @@ func modelLines(s model.Snapshot, latest string, seen []model.ModelSeen) []strin
 	return lines
 }
 
+// anomalyKeys are the catalog keys of the collector's anomaly kinds.
+var anomalyKeys = map[string]string{
+	model.AnomalyUnresolvedKey:   "an.unresolvedKey",
+	model.AnomalyOrphanLease:     "an.orphanLease",
+	model.AnomalyUnknownSender:   "an.unknownSender",
+	model.AnomalyUnknownTarget:   "an.unknownTarget",
+	model.AnomalyBadLine:         "an.badLine",
+	model.AnomalyOversizedLine:   "an.oversizedLine",
+	model.AnomalyUnreadable:      "an.unreadable",
+	model.AnomalyTranscriptStall: "an.stall",
+}
+
+// anomalyKind is an anomaly's kind in the language in use; a kind the catalog
+// does not know is shown as the collector wrote it.
+func anomalyKind(k string) string {
+	if key, ok := anomalyKeys[k]; ok {
+		return T(key)
+	}
+	return k
+}
+
 func anomalyLines(s model.Snapshot) []string {
 	lines := []string{Tf("d.anom", len(s.Anomalies))}
 	for _, a := range s.Anomalies {
-		l := a.Kind + ": " + a.Subject
+		l := anomalyKind(a.Kind) + T("d.sep") + a.Subject
 		if a.Detail != "" {
 			l += " - " + a.Detail
 		}

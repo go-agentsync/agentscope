@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-agentsync/agentscope/model"
 	"github.com/go-widgets/toolkit"
@@ -191,6 +192,32 @@ func TestDataTextsFollowLanguage(t *testing.T) {
 	vm.Tab.Set(TabGuardrails)
 	if !strings.HasPrefix(s.gChips[0].Text, "untriaged") {
 		t.Fatalf("back to English: %q", s.gChips[0].Text)
+	}
+}
+
+func TestAgesAnomaliesAndWindowsFollowLanguage(t *testing.T) {
+	resetLang(t)
+	t0 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	vm := NewViewModel()
+	vm.Prefs.LangSel.Set(2)
+	for d, want := range map[time.Duration]string{time.Second: "maintenant", 4 * time.Minute: "4 min", 3 * time.Hour: "3 h", 72 * time.Hour: "3 j"} {
+		if got := ago(t0, t0.Add(-d)); got != want {
+			t.Errorf("ago(%v) = %q, want %q", d, got, want)
+		}
+	}
+	if got := anomalyKind(model.AnomalyBadLine); got != "ligne illisible" {
+		t.Errorf("kind: %q", got)
+	}
+	if got := anomalyKind("something new"); got != "something new" {
+		t.Errorf("an unknown kind must stay as it came: %q", got)
+	}
+	if got := anomalyLines(model.Snapshot{Anomalies: []model.Anomaly{{Kind: model.AnomalyUnreadable, Subject: "x"}}})[1]; got != "fichier illisible : x" {
+		t.Errorf("line: %q", got)
+	}
+	for in, want := range map[string]string{"Session (5hr)": "Session (5 h)", "Weekly (7 day)": "Hebdomadaire (7 jours)", "Weekly Opus": "Hebdomadaire Opus", "Other": "Other"} {
+		if got := windowLabel(in); got != want {
+			t.Errorf("windowLabel(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

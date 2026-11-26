@@ -86,8 +86,10 @@ type GuardState struct {
 	Detail *mvvm.ObservableList[string]
 	// Decision indexes DecisionNames; SortCol and SortAsc order the table.
 	Decision *mvvm.Observable[int]
-	SortCol  *mvvm.Observable[int]
-	SortAsc  *mvvm.Observable[bool]
+	// DecisionOpts are the decision drop-down's options, in the language in use.
+	DecisionOpts *mvvm.ObservableList[string]
+	SortCol      *mvvm.Observable[int]
+	SortAsc      *mvvm.Observable[bool]
 	// Chips are the headline chips; Notes the line under the tab, which says what
 	// is not measured.
 	Chips [GuardChipSlots]*mvvm.Observable[string]
@@ -99,7 +101,7 @@ func newGuardState() *GuardState {
 	g := &GuardState{
 		Data: mvvm.NewObservable[*model.Guardrails](nil), Rows: mvvm.NewObservableList[GuardRow](),
 		Sel: mvvm.NewObservable(-1), Detail: mvvm.NewObservableList[string](),
-		Decision: mvvm.NewObservable(0), SortCol: mvvm.NewObservable(GColAfter), SortAsc: mvvm.NewObservable(false),
+		Decision: mvvm.NewObservable(0), DecisionOpts: mvvm.NewObservableList(DecisionNames()...), SortCol: mvvm.NewObservable(GColAfter), SortAsc: mvvm.NewObservable(false),
 		Notes: mvvm.NewObservable("reading the ledger and the transcripts..."),
 	}
 	for i := range g.Chips {

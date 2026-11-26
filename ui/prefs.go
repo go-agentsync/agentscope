@@ -42,6 +42,8 @@ type PrefsState struct {
 	// ThemeSel is the theme drop-down's index into Themes; LangSel the language
 	// drop-down's: 0 is automatic, i the i-th of Langs.
 	ThemeSel, LangSel *mvvm.Observable[int]
+	// ThemeOpts and LangOpts are those drop-downs' options, in the language in use.
+	ThemeOpts, LangOpts *mvvm.ObservableList[string]
 	// Lang is the language in force ("en", "fr"): the chosen one, else the best of
 	// NavLangs, else English.
 	Lang *mvvm.Observable[string]
@@ -64,6 +66,7 @@ func newPrefsState(vm *ViewModel) *PrefsState {
 	p := &PrefsState{
 		vm: vm, Manager: toolkit.NewThemeManager(fam),
 		ThemeSel: mvvm.NewObservable(0), LangSel: mvvm.NewObservable(0), Lang: mvvm.NewObservable("en"),
+		ThemeOpts: mvvm.NewObservableList(ThemeNames()...), LangOpts: mvvm.NewObservableList(LangNames()...),
 	}
 	p.Manager.OnChange(func() { vm.Dark.Set(p.Manager.Dark()) })
 	p.ThemeSel.SubscribeChanged(p.onTheme)

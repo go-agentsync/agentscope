@@ -201,8 +201,6 @@ func (s *Scene) applyLang() {
 	for i, k := range []string{"tab.graph", "tab.quota", "tab.guardrails"} {
 		s.tabs.Tabs[i].Label = T(k)
 	}
-	s.themeDD.Options, s.langDD.Options = ThemeNames(), LangNames()
-	s.stateDD.Options, s.lastDD.Options, s.gDecision.Options = StateNames(), LastNames(), DecisionNames()
 	for i, n := range SpanNames() {
 		s.spanRadios[i].Label = n
 	}
@@ -361,6 +359,11 @@ func (s *Scene) bind() {
 		vm.Graph.Nodes.SubscribeChanged(invalidate),
 		vm.Graph.Clusters.SubscribeChanged(invalidate),
 		vm.Dark.SubscribeChanged(func() { s.applyTheme(); s.refreshQuota(); s.refreshGuard(); invalidate() }),
+		mvvmtk.BindDropDownOptions(s.themeDD, vm.Prefs.ThemeOpts, func(o string) string { return o }, invalidate),
+		mvvmtk.BindDropDownOptions(s.langDD, vm.Prefs.LangOpts, func(o string) string { return o }, invalidate),
+		mvvmtk.BindDropDownOptions(s.stateDD, vm.Filters.StateOpts, func(o string) string { return o }, invalidate),
+		mvvmtk.BindDropDownOptions(s.lastDD, vm.Filters.LastOpts, func(o string) string { return o }, invalidate),
+		mvvmtk.BindDropDownOptions(s.gDecision, vm.Guard.DecisionOpts, func(o string) string { return o }, invalidate),
 		mvvmtk.BindSelectedIndex(s.themeDD, vm.Prefs.ThemeSel, invalidate),
 		mvvmtk.BindSelectedIndex(s.langDD, vm.Prefs.LangSel, invalidate),
 		vm.Prefs.Lang.SubscribeChanged(func() { s.applyLang(); invalidate() }),

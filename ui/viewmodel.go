@@ -332,6 +332,11 @@ func (vm *ViewModel) SetConn(key, detail string) {
 // snapshot) the rows, the chips, the details and the status line.
 func (vm *ViewModel) relocalize() {
 	vm.SetConn(vm.connKey, vm.connDetail)
+	setList(vm.Prefs.ThemeOpts, ThemeNames())
+	setList(vm.Prefs.LangOpts, LangNames())
+	setList(vm.Filters.StateOpts, StateNames())
+	setList(vm.Filters.LastOpts, LastNames())
+	setList(vm.Guard.DecisionOpts, DecisionNames())
 	if vm.have {
 		vm.Apply(vm.snap)
 		return

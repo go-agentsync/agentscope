@@ -46,6 +46,9 @@ type Filters struct {
 	// RepoOptions. It follows its repository by name when the options change.
 	Repo        *mvvm.Observable[int]
 	RepoOptions *mvvm.ObservableList[string]
+	// StateOpts and LastOpts are the State and Last drop-downs' options, in the
+	// language in use.
+	StateOpts, LastOpts *mvvm.ObservableList[string]
 	// ModelLabels and ModelOn are the model check boxes: slot i is the i-th most
 	// used model present, "" when there are fewer. None checked is no model
 	// filter; checked ones are OR-ed among themselves, AND-ed with the rest.
@@ -64,7 +67,8 @@ func newFilters(changed func()) *Filters {
 	f := &Filters{
 		State: mvvm.NewObservable(StateAll), Last: mvvm.NewObservable(0), Repo: mvvm.NewObservable(0),
 		RepoOptions: mvvm.NewObservableList(AllRepos()),
-		models:      map[string]bool{}, changed: changed,
+		StateOpts:   mvvm.NewObservableList(StateNames()...), LastOpts: mvvm.NewObservableList(LastNames()...),
+		models: map[string]bool{}, changed: changed,
 	}
 	for i := range f.ModelLabels {
 		f.ModelLabels[i], f.ModelOn[i] = mvvm.NewObservable(""), mvvm.NewObservable(false)

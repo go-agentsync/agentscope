@@ -85,6 +85,7 @@ no Go toolchain.`,
 			eng.SetRecur(&guard.Source{Dir: guard.MemoryDir(memDir, o.ClaudeDir), Run: recurRunner})
 			hub := wire.NewHub(usage.Source{Inner: collect.New(o), Eng: eng}, interval, 10*time.Second)
 			hub.SetRenamer(eng)
+			hub.SetColorer(eng)
 			srv, err := serve.New(serve.Config{Addr: addr, Web: ui, Scope: hub})
 			if err != nil {
 				return err

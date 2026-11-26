@@ -147,6 +147,9 @@ type ViewModel struct {
 	// Rename the dialog's state (see rename.go).
 	CapSel *mvvm.Observable[int]
 	Rename *RenameState
+	// Color is the Colour action of the same table: the dialog that gives the
+	// selected account a colour of its own (see colorstate.go).
+	Color *ColorState
 
 	usageSig string // a hash of the Usage last set, "" for none
 	snap     model.Snapshot
@@ -197,6 +200,7 @@ func NewViewModel() *ViewModel {
 	})
 	vm.Filters = newFilters(vm.refreshRows)
 	vm.Rename = newRenameState(vm)
+	vm.Color = newColorState(vm)
 	// A width the owner (or a store) sets is held to the bounds at once. A surface
 	// that gets narrower does NOT rewrite it: the panel is only shown within the
 	// bounds (EffectivePanelW), so widening the window brings the chosen width back.

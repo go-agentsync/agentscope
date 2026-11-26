@@ -51,6 +51,13 @@ func (c *Client) Snapshot(ctx context.Context) (model.Snapshot, error) {
 	return out, err
 }
 
+// SetColor asks the server to give an account a colour, "#rrggbb" ("" restores
+// the automatic one).
+func (c *Client) SetColor(ctx context.Context, key, color string) error {
+	var out Empty
+	return c.cc.Invoke(ctx, methodSetColor, &SetColorRequest{Key: key, Color: color}, &out)
+}
+
 // Rename asks the server to give an account a display name ("" removes it).
 func (c *Client) Rename(ctx context.Context, key, name string) error {
 	var out Empty

@@ -39,6 +39,9 @@ type AccountUsage struct {
 	// Alias is the display name the owner gave the account (accounts.toml); it
 	// replaces the label wherever the account is named. "" when it has none.
 	Alias string `json:"alias,omitempty"`
+	// Color is the colour the owner gave the account, "#rrggbb" (account-colors.toml);
+	// "" when it has none and the automatic colour applies.
+	Color string `json:"color,omitempty"`
 	// Suggest is the organisation's name, offered as a first value of the rename
 	// dialog. It is sent ONLY when the server runs with --show-org, and only for
 	// the account Claude Code is signed in to.
@@ -86,6 +89,7 @@ type CapacityItem struct {
 	Key         string  `json:"key"`
 	Label       string  `json:"label"`
 	Alias       string  `json:"alias,omitempty"`
+	Color       string  `json:"color,omitempty"`
 	Plan        string  `json:"plan,omitempty"`
 	Active      bool    `json:"active,omitempty"`
 	SessionOK   bool    `json:"sessionOk,omitempty"`

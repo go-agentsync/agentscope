@@ -108,6 +108,16 @@ func stackColorsAll(dark bool) []toolkit.RGBA {
 	return append(StackColors(dark), Palette(dark)[7])
 }
 
+// accountInk is the colour of the i-th account's lines and markers: the one the
+// owner gave it, else the automatic one by position. A stored value that is not
+// #rrggbb is not a colour, and the automatic one applies.
+func accountInk(a model.AccountUsage, i int, auto []toolkit.RGBA) toolkit.RGBA {
+	if r, g, b, ok := model.ParseColor(a.Color); ok {
+		return toolkit.RGB(r, g, b)
+	}
+	return auto[i%len(auto)]
+}
+
 // buildQuota turns the server's usage view into charts: of one account (sel is
 // its 1-based position in u.Accounts) or of all of them (sel 0).
 func buildQuota(u *model.Usage, sel, span, kind int, dark bool) quotaView {
@@ -167,7 +177,7 @@ func buildAll(u *model.Usage, span, kind int, dark bool) quotaView {
 		target = &v.WeekPct
 	}
 	for i, a := range u.Accounts {
-		ink := cols[i%len(cols)]
+		ink := accountInk(a, i, cols)
 		for _, w := range a.Windows {
 			if w.Label != label {
 				continue

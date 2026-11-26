@@ -31,6 +31,7 @@ type Hub struct {
 	sum     []byte
 	sentAt  time.Time
 	rename  Renamer
+	colorer Colorer
 }
 
 // NewHub returns a Hub that collects every `every` and republishes an
@@ -131,6 +132,32 @@ func (h *Hub) Rename(_ context.Context, key, name string) error {
 		return errors.New("wire: this server does not rename accounts")
 	}
 	if err := r.Rename(key, name); err != nil {
+		return err
+	}
+	h.Collect()
+	return nil
+}
+
+// Colorer is what writes an account's colour; *usage.Engine is one.
+type Colorer interface{ SetColor(key, color string) error }
+
+// SetColorer makes the hub serve SetColor through c. Without one it refuses.
+func (h *Hub) SetColorer(c Colorer) {
+	h.mu.Lock()
+	h.colorer = c
+	h.mu.Unlock()
+}
+
+// SetColor implements Scope: it writes the colour and collects at once, so every
+// watching browser shows it without waiting for the next interval.
+func (h *Hub) SetColor(_ context.Context, key, color string) error {
+	h.mu.Lock()
+	c := h.colorer
+	h.mu.Unlock()
+	if c == nil {
+		return errors.New("wire: this server does not colour accounts")
+	}
+	if err := c.SetColor(key, color); err != nil {
 		return err
 	}
 	h.Collect()

@@ -40,6 +40,9 @@ type Input struct {
 	Active string
 	// Alias is the display name of an account by key ("" for none); nil is none.
 	Alias func(key string) string
+	// Color is the colour the owner gave an account by key ("" for none); nil is
+	// none.
+	Color func(key string) string
 	// Stamps is the `stamp` hook's timeline: an account known only by its tokens
 	// takes its label and plan from its latest stamp.
 	Stamps accounts.Timeline
@@ -101,6 +104,9 @@ func Build(in Input, sc *Scanner) *model.Usage {
 		if in.Alias != nil && a.Key != "" {
 			a.Alias = in.Alias(a.Key)
 		}
+		if in.Color != nil && a.Key != "" {
+			a.Color = in.Color(a.Key)
+		}
 		if st, ok := in.Stamps.Latest(a.Key); ok && a.Key != "" {
 			// An account no aiquota reading names is known by what the hook saw.
 			if a.Label == "account" && st.Label != "" {
@@ -129,10 +135,10 @@ func Build(in Input, sc *Scanner) *model.Usage {
 	}
 
 	u.Capacity = capacity(n, u.Accounts)
-	for i := range u.Capacity.Items { // the alias and the plan follow the account into the table
+	for i := range u.Capacity.Items { // the alias, the colour and the plan follow the account into the table
 		for _, a := range u.Accounts {
 			if a.Key == u.Capacity.Items[i].Key {
-				u.Capacity.Items[i].Alias, u.Capacity.Items[i].Plan = a.Alias, a.Plan
+				u.Capacity.Items[i].Alias, u.Capacity.Items[i].Plan, u.Capacity.Items[i].Color = a.Alias, a.Plan, a.Color
 			}
 		}
 	}
@@ -345,6 +351,7 @@ type Engine struct {
 	now     func() time.Time
 	stamps  *accounts.Stamps
 	aliases *accounts.Aliases
+	colors  *accounts.Colors
 	// org reads the organisation's name; nil unless --show-org.
 	org func() string
 
@@ -378,6 +385,7 @@ func NewEngine(claudeDir, cacheDir, configDir string, run quota.Runner) *Engine 
 
 		stamps:  accounts.NewStamps(configDir),
 		aliases: accounts.NewAliases(configDir),
+		colors:  accounts.NewColors(configDir),
 	}
 }
 
@@ -416,10 +424,35 @@ func (e *Engine) Rename(key, name string) error {
 	return nil
 }
 
+// SetColor gives the account with the key a colour (#rrggbb), or restores its
+// automatic colour when color is empty, and rebuilds the view so the next
+// snapshot carries it. It is what the UI's Colour action calls; the file is
+// written here, by the serve process, and a value that is not #rrggbb is refused.
+func (e *Engine) SetColor(key, color string) error {
+	if err := e.colors.Set(key, color); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.view != nil { // show it now, not at the next minute's pass
+		for i := range e.view.Accounts {
+			if a := &e.view.Accounts[i]; a.Key != "" {
+				a.Color = e.colors.Color(a.Key)
+			}
+		}
+		for i := range e.view.Capacity.Items {
+			if it := &e.view.Capacity.Items[i]; it.Key != "" {
+				it.Color = e.colors.Color(it.Key)
+			}
+		}
+	}
+	return nil
+}
+
 // input is what Build needs besides the transcripts, at now. The caller holds
 // e.mu.
 func (e *Engine) input(now time.Time) Input {
-	in := Input{Now: now, Live: e.live, QuotaErr: e.quotaErr, Active: e.active(), Alias: e.aliases.Name, Stamps: e.stamps.Load()}
+	in := Input{Now: now, Live: e.live, QuotaErr: e.quotaErr, Active: e.active(), Alias: e.aliases.Name, Color: e.colors.Color, Stamps: e.stamps.Load()}
 	in.Hist, _ = e.store.Load()
 	if e.org != nil {
 		in.Suggest = e.org()
@@ -479,6 +512,7 @@ func (e *Engine) Step(ctx context.Context, now time.Time) {
 		e.mu.Unlock()
 	}
 	e.aliases.Reload() // the owner may have edited the file by hand
+	e.colors.Reload()
 	e.scan.SetStamps(e.stamps.Load())
 	e.scan.Refresh(now)
 	g := guard.Build(e.guardInput(ctx, now))

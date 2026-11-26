@@ -235,6 +235,20 @@ func main() {
 			do(func() bool { scene.VM().Rename.Done(err); return true })
 		}()
 	}
+	// The Colour dialog does the same: one request, answered through Done.
+	scene.VM().Color.Send = func(key, color string) {
+		go func() {
+			var err error
+			if c := conn.Load(); c == nil {
+				err = errors.New("not connected to the server")
+			} else {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				err = c.SetColor(ctx, key, color)
+			}
+			do(func() bool { scene.VM().Color.Done(err); return true })
+		}()
+	}
 	scene.SetStore(localStore{})
 	go watch(scene, feed, do)
 	select {} // park forever so the callbacks live

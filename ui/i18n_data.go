@@ -63,6 +63,16 @@ var enData = map[string]string{
 	"d.leaseNotIn": "lease: not in this snapshot",
 	"d.edge":       "edge %s",
 	"d.moreLines":  "... %d more line(s)",
+
+	"g.otherRepos":   "other repositories",
+	"g.session":      "session",
+	"g.idleSession":  "idle session",
+	"g.noTranscript": "no transcript",
+	"g.more":         "+%d more",
+	"g.moreAgents":   "more sub-agents",
+	"g.heldRepo":     "held repo",
+	"g.repo":         "repo",
+	"g.org":          "org",
 }
 
 var frData = map[string]string{
@@ -125,4 +135,14 @@ var frData = map[string]string{
 	"d.leaseNotIn": "bail : absent de cet instantané",
 	"d.edge":       "arête %s",
 	"d.moreLines":  "... %d ligne(s) de plus",
+
+	"g.otherRepos":   "autres dépôts",
+	"g.session":      "session",
+	"g.idleSession":  "session inactive",
+	"g.noTranscript": "sans transcription",
+	"g.more":         "+%d de plus",
+	"g.moreAgents":   "autres sous-agents",
+	"g.heldRepo":     "dépôt tenu",
+	"g.repo":         "dépôt",
+	"g.org":          "org",
 }

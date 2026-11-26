@@ -45,7 +45,7 @@ const (
 )
 
 // repoClusterLabel is the label of the cluster of repositories nobody holds.
-const repoClusterLabel = "other repositories"
+func repoClusterLabel() string { return T("g.otherRepos") }
 
 // candidate is an edge the graph MAY draw, with what decides whether it is.
 type candidate struct {
@@ -133,12 +133,12 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 	}
 
 	for _, se := range sessions {
-		cat := "session"
+		cat := T("g.session")
 		if !se.Active {
-			cat = "idle session"
+			cat = T("g.idleSession")
 		}
 		if !se.HasTranscript {
-			cat = "no transcript"
+			cat = T("g.noTranscript")
 		}
 		label := se.Short
 		if r := sessionRepo(s, se); r != "" {
@@ -149,14 +149,14 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 		add(toolkit.GraphNode{ID: main, Label: se.Short, Cluster: se.Short, Category: cat})
 		for i, a := range se.Agents {
 			if i >= MaxGraphAgents {
-				add(toolkit.GraphNode{ID: morePrefix + se.Short, Label: "+" + strconv.Itoa(len(se.Agents)-MaxGraphAgents) + " more",
-					Cluster: se.Short, Category: "more sub-agents"})
+				add(toolkit.GraphNode{ID: morePrefix + se.Short, Label: Tf("g.more", len(se.Agents)-MaxGraphAgents),
+					Cluster: se.Short, Category: T("g.moreAgents")})
 				break
 			}
 			id := agentPrefix + se.Short + ":" + a.ID
 			ty := a.Type
 			if ty == "" {
-				ty = "agent"
+				ty = T("d.agent")
 			}
 			label := a.Description
 			if label == "" {
@@ -168,11 +168,11 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 				edge: toolkit.GraphEdge{ID: spawnPrefix + id, From: main, To: id, Label: model.Truncate(a.Description, 80), State: st}})
 		}
 		for _, k := range heldBy[se.Short] {
-			add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: se.Short, Category: "held repo"})
+			add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: se.Short, Category: T("g.heldRepo")})
 		}
 	}
 	if len(free) > 0 {
-		g.clusters = append(g.clusters, toolkit.GraphCluster{ID: reposCluster, Label: repoClusterLabel})
+		g.clusters = append(g.clusters, toolkit.GraphCluster{ID: reposCluster, Label: repoClusterLabel()})
 		// Repositories nobody holds are folded by org: one node per org with a
 		// count, which expands (and collapses) in place. An org with a single
 		// repository needs no fold and shows that repository.
@@ -185,7 +185,7 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 		for _, k := range free {
 			org := orgOf(k)
 			if count[org] < 2 {
-				add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: "repo"})
+				add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: T("g.repo")})
 				continue
 			}
 			if !done[org] {
@@ -194,10 +194,10 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 				if expanded[org] {
 					sign = "- "
 				}
-				add(toolkit.GraphNode{ID: orgPrefix + org, Label: model.Truncate(sign+org+" ("+strconv.Itoa(count[org])+")", NodeChars), Cluster: reposCluster, Category: "org"})
+				add(toolkit.GraphNode{ID: orgPrefix + org, Label: model.Truncate(sign+org+" ("+strconv.Itoa(count[org])+")", NodeChars), Cluster: reposCluster, Category: T("g.org")})
 			}
 			if expanded[org] {
-				add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: "repo"})
+				add(toolkit.GraphNode{ID: repoPrefix + k, Label: RepoLabel(k, NodeChars), Cluster: reposCluster, Category: T("g.repo")})
 			}
 		}
 	}

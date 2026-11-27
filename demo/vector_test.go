@@ -27,7 +27,8 @@ func TestTextFaceFallsBackWithoutFontData(t *testing.T) {
 	v := &vecRecorder{Recorder: rec, src: src}
 	v.TextFace(1, 1, "fallback", noFace{}, painter.RGBA{A: 255})
 	v.Text(1, 20, "direct", painter.RGBA{A: 255})
-	if got := strings.Join(src.Texts(), ","); got != "direct,fallback" {
+	v.TextFace(1, 30, "junk", junkFace{}, painter.RGBA{A: 255})
+	if got := strings.Join(src.Texts(), ","); got != "direct,fallback,junk" {
 		t.Errorf("texts %q", got)
 	}
 }

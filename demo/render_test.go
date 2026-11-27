@@ -58,8 +58,8 @@ func TestRenderSizeBounds(t *testing.T) {
 	if _, err := Render("overview", Options{W: 9000, H: 720}); err == nil {
 		t.Error("a 9000x720 capture was accepted")
 	}
-	if _, err := Render("nope", Options{}); err == nil {
-		t.Error("an unknown scenario was accepted")
+	if _, err := Render("nope", Options{}); err == nil || !strings.Contains(err.Error(), `unknown scenario "nope"`) {
+		t.Errorf("an unknown scenario: %v", err)
 	}
 	r, err := Render("overview", Options{W: 640, H: 400})
 	if err != nil || r.Stats.Width != 640 || r.Stats.Height != 400 {
@@ -194,13 +194,16 @@ func TestWriteRefusesAGitTreeAndCreatesDirectories(t *testing.T) {
 	if b, _ := os.ReadFile(out); !bytes.Equal(b, r.SVG) {
 		t.Error("the file is not the rendered SVG")
 	}
-	if _, err := Write("nope", filepath.Join(root, "y.svg"), Options{}); err == nil {
-		t.Error("an unknown scenario was written")
+	if _, err := Write("nope", filepath.Join(root, "y.svg"), Options{}); err == nil || !strings.Contains(err.Error(), "unknown scenario") {
+		t.Errorf("an unknown scenario was written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "y.svg")); err == nil {
+		t.Error("a file was left for an unknown scenario")
 	}
 	file := filepath.Join(root, "afile")
 	os.WriteFile(file, nil, 0o644)
-	if _, err := Write("overview", filepath.Join(file, "x.svg"), Options{}); err == nil {
-		t.Error("a path under a file was written")
+	if _, err := Write("overview", filepath.Join(file, "x.svg"), Options{}); err == nil || strings.Contains(err.Error(), "refusing") {
+		t.Errorf("a path under a file: %v", err)
 	}
 }
 

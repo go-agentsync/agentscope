@@ -134,10 +134,7 @@ const (
 
 // ParseSize reads "WIDTHxHEIGHT" within [MinSize, MaxSize].
 func ParseSize(s string) (w, h int, err error) {
-	ws, hs, ok := strings.Cut(s, "x")
-	if !ok {
-		return 0, 0, fmt.Errorf("size %q: want WIDTHxHEIGHT", truncate(s, 40))
-	}
+	ws, hs, _ := strings.Cut(s, "x") // no "x": hs is "" and Atoi refuses it
 	w, err = strconv.Atoi(ws)
 	if err == nil {
 		h, err = strconv.Atoi(hs)

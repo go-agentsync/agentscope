@@ -50,10 +50,7 @@ func newOutlines() *outlines {
 }
 
 func (o *outlines) face(f painter.Face) (*opentype.Face, bool) {
-	data := f.FontData()
-	if len(data) == 0 {
-		return nil, false
-	}
+	data := f.FontData() // no data: Parse refuses it
 	k := faceKey{unsafe.SliceData(data), f.SizePx()}
 	if fc, ok := o.faces[k]; ok {
 		return fc, true

@@ -2,10 +2,14 @@ package demo
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/go-widgets/painter/svgrec"
+	"github.com/go-widgets/svg"
 )
 
 func TestRenderIsByteForByteDeterministic(t *testing.T) {
@@ -159,6 +163,36 @@ func TestRenderIsVectorOutsideIcons(t *testing.T) {
 	}
 }
 
+func TestRenderReportsAFailingPartInsteadOfPanicking(t *testing.T) {
+	boom := errors.New("boom")
+	defer func(a func(int, int) (*svgrec.Recorder, error), b func(*svgrec.Recorder) ([]byte, error), c func([]svg.Frame, svg.Options) (*svg.Document, error)) {
+		newRecorder, recorderSVG, assemble = a, b, c
+	}(newRecorder, recorderSVG, assemble)
+	for name, set := range map[string]func(){
+		"recorder": func() { newRecorder = func(int, int) (*svgrec.Recorder, error) { return nil, boom } },
+		"svg":      func() { recorderSVG = func(*svgrec.Recorder) ([]byte, error) { return nil, boom } },
+		"assemble": func() { assemble = func([]svg.Frame, svg.Options) (*svg.Document, error) { return nil, boom } },
+	} {
+		newRecorder, recorderSVG, assemble = svgrec.New, func(r *svgrec.Recorder) ([]byte, error) { return r.SVG() }, svg.Assemble
+		set()
+		r, err := Render("overview", Options{})
+		if r != nil || err == nil || !strings.Contains(err.Error(), "boom") {
+			t.Errorf("%s: %v %v", name, r, err)
+		}
+	}
+}
+
+func TestInsideGitTreeReportsAnUnresolvablePath(t *testing.T) {
+	defer func(a func(string) (string, error)) { absPath = a }(absPath)
+	absPath = func(string) (string, error) { return "", errors.New("no cwd") }
+	if in, err := InsideGitTree("x"); in || err == nil {
+		t.Errorf("%v %v", in, err)
+	}
+	if r, err := Write("overview", "x.svg", Options{}); r != nil || err == nil {
+		t.Errorf("a capture was written to an unresolvable path: %v %v", r, err)
+	}
+}
+
 func TestInsideGitTree(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "repo", ".git"), 0o755)
@@ -202,8 +236,8 @@ func TestWriteRefusesAGitTreeAndCreatesDirectories(t *testing.T) {
 	}
 	file := filepath.Join(root, "afile")
 	os.WriteFile(file, nil, 0o644)
-	if _, err := Write("overview", filepath.Join(file, "x.svg"), Options{}); err == nil || strings.Contains(err.Error(), "refusing") {
-		t.Errorf("a path under a file: %v", err)
+	if r, err := Write("overview", filepath.Join(file, "x.svg"), Options{}); r != nil || err == nil || strings.Contains(err.Error(), "refusing") {
+		t.Errorf("a path under a file: %v %v", r, err)
 	}
 }
 

@@ -30,6 +30,16 @@ type Result struct {
 	Texts    []string      // every distinct string drawn: the outlines hide them from a text scan
 }
 
+// The calls that fail only on a condition a validated capture never meets are
+// package variables, so a test can make them fail and check that the failure
+// reaches the caller instead of a panic or a half-written file.
+var (
+	newRecorder = svgrec.New
+	recorderSVG = func(r *svgrec.Recorder) ([]byte, error) { return r.SVG() }
+	assemble    = svg.Assemble
+	absPath     = filepath.Abs
+)
+
 // Render plays the scenario against a fresh Scene and view-model and assembles
 // the recorded frames into one animated SVG. It is deterministic: no clock, no
 // file and no network is read.
@@ -53,12 +63,12 @@ func Render(name string, o Options) (*Result, error) {
 	raster := 0
 	for i, st := range sc.Steps() {
 		st.Do(env)
-		rec, err := svgrec.New(o.W, o.H)
+		rec, err := newRecorder(o.W, o.H)
 		if err != nil {
 			return nil, err
 		}
 		scene.DrawTo(&vecRecorder{Recorder: rec, src: src})
-		b, err := rec.SVG()
+		b, err := recorderSVG(rec)
 		if err != nil {
 			return nil, fmt.Errorf("step %d: %w", i, err)
 		}
@@ -66,7 +76,7 @@ func Render(name string, o Options) (*Result, error) {
 		frames = append(frames, svg.Frame{At: at, SVG: b})
 		at += st.Hold
 	}
-	doc, err := svg.Assemble(frames, svg.Options{End: at, Title: sc.Title})
+	doc, err := assemble(frames, svg.Options{End: at, Title: sc.Title})
 	if err != nil {
 		return nil, err
 	}
@@ -85,18 +95,17 @@ func DefaultOutDir() (string, error) {
 
 // InsideGitTree reports whether p, or a directory above it, holds a .git.
 func InsideGitTree(p string) (bool, error) {
-	abs, err := filepath.Abs(p)
+	abs, err := absPath(p)
 	if err != nil {
 		return false, err
 	}
-	for d := filepath.Dir(abs); ; d = filepath.Dir(d) {
+	// d climbs until Dir(d) is d: the root.
+	for d, prev := filepath.Dir(abs), ""; d != prev; d, prev = filepath.Dir(d), d {
 		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
 			return true, nil
 		}
-		if d == filepath.Dir(d) {
-			return false, nil
-		}
 	}
+	return false, nil
 }
 
 // Write renders the scenario and writes it to out, refusing a path inside a git

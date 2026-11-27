@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-agentsync/agentscope/ui"
 	"github.com/go-opentype/opentype"
 	"github.com/go-opentype/shape"
 	"github.com/go-widgets/painter"
@@ -30,6 +31,34 @@ func TestTextFaceFallsBackWithoutFontData(t *testing.T) {
 	v.TextFace(1, 30, "junk", junkFace{}, painter.RGBA{A: 255})
 	if got := strings.Join(src.Texts(), ","); got != "direct,fallback,junk" {
 		t.Errorf("texts %q", got)
+	}
+}
+
+// A face is parsed once per (data, size): a second frame draws with the same
+// parsed face, not a copy of it.
+func TestParsedFacesAreReusedAcrossFrames(t *testing.T) {
+	scene := ui.NewScene(640, 400)
+	src := newOutlines()
+	draw := func() {
+		rec, err := svgrec.New(640, 400)
+		if err != nil {
+			t.Fatal(err)
+		}
+		scene.DrawTo(&vecRecorder{Recorder: rec, src: src})
+	}
+	draw()
+	first := map[faceKey]*opentype.Face{}
+	for k, v := range src.faces {
+		first[k] = v
+	}
+	if len(first) == 0 {
+		t.Fatal("no face was parsed: the text did not go through outlines")
+	}
+	draw()
+	for k, v := range first {
+		if src.faces[k] != v {
+			t.Errorf("face %v was parsed again", k)
+		}
 	}
 }
 

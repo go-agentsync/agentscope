@@ -3,10 +3,10 @@
 // the graph first. Headless Chrome's own --screenshot fires at the load event,
 // before the wasm has booted, so it shoots an empty window.
 //
-//	go run ./internal/capture -chrome "<path>" -url http://127.0.0.1:8765/ \
-//	    -out ~/Library/Application\ Support/agentscope/captures/live.png -wait 6s -scroll 0
+//	go run ./internal/capture --chrome "<path>" --url http://127.0.0.1:8765/ \
+//	    --out ~/Library/Application\ Support/agentscope/captures/live.png --wait 6s --scroll 0
 //
-// A capture shows real session ids and lease notes, so it is refused when -out
+// A capture shows real session ids and lease notes, so it is refused when --out
 // is inside a git work tree (any parent directory holds a .git).
 package main
 
@@ -15,7 +15,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,6 +26,7 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"github.com/spf13/cobra"
 )
 
 // insideGitTree reports whether p, or a parent of it, holds a .git.
@@ -189,7 +189,7 @@ func run(ctx context.Context, chrome, url, out string, wait time.Duration, scrol
 		if err != nil {
 			return err
 		}
-		fmt.Println("eval:", string(raw))
+		fmt.Fprintln(evalOut, "eval:", string(raw))
 	}
 	if dragSpec != "" { // press at x1,y1, move to x2,y2, release: a drag of a divider
 		var x1, y1, x2, y2 int
@@ -239,28 +239,56 @@ func run(ctx context.Context, chrome, url, out string, wait time.Duration, scrol
 	return os.WriteFile(out, png, 0o644)
 }
 
+// osExit is replaced by the tests.
+var osExit = os.Exit
+
+// evalOut receives the result of --eval.
+var evalOut io.Writer = os.Stdout
+
+// RootCmd is the command line, driven by the tests through SetArgs, SetOut and
+// SetErr.
+func RootCmd() *cobra.Command {
+	var chrome, url, out, click string
+	var wait time.Duration
+	var scroll, w, h int
+	var dark bool
+	cmd := &cobra.Command{
+		Use:           "capture",
+		Short:         "Screenshot a running agentscope page with a real Chrome",
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), wait+90*time.Second)
+			defer cancel()
+			evalOut = cmd.OutOrStdout()
+			if err := run(ctx, chrome, url, out, wait, scroll, w, h, click, dark); err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "wrote", out)
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.StringVar(&chrome, "chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "the Chrome binary")
+	f.StringVar(&url, "url", "http://127.0.0.1:8765/", "the page")
+	f.StringVar(&out, "out", "", "the PNG to write (outside any git work tree)")
+	f.DurationVar(&wait, "wait", 6*time.Second, "how long the page gets before the capture")
+	f.IntVar(&scroll, "scroll", 0, "wheel steps over the graph before the capture")
+	f.StringVar(&click, "click", "", "x,y of a click (e.g. a node) before the capture; x,y;x,y for several")
+	f.StringVar(&dragSpec, "drag", "", "x1,y1,x2,y2: press, move and release (resizing the panel's divider) after the clicks")
+	f.StringVar(&evalExpr, "eval", "", "a JavaScript expression evaluated in the page after the wait, its result printed (e.g. agentscopeStats())")
+	f.BoolVar(&dark, "dark", false, "emulate prefers-color-scheme: dark")
+	f.IntVar(&w, "width", 1680, "window width")
+	f.IntVar(&h, "height", 960, "window height")
+	_ = cmd.MarkFlagRequired("out")
+	return cmd
+}
+
 func main() {
-	chrome := flag.String("chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "the Chrome binary")
-	url := flag.String("url", "http://127.0.0.1:8765/", "the page")
-	out := flag.String("out", "", "the PNG to write (outside any git work tree)")
-	wait := flag.Duration("wait", 6*time.Second, "how long the page gets before the capture")
-	scroll := flag.Int("scroll", 0, "wheel steps over the graph before the capture")
-	click := flag.String("click", "", "x,y of a click (e.g. a node) before the capture; x,y;x,y for several")
-	flag.StringVar(&dragSpec, "drag", "", "x1,y1,x2,y2: press, move and release (resizing the panel's divider) after the clicks")
-	flag.StringVar(&evalExpr, "eval", "", "a JavaScript expression evaluated in the page after the wait, its result printed (e.g. agentscopeStats())")
-	dark := flag.Bool("dark", false, "emulate prefers-color-scheme: dark")
-	w := flag.Int("w", 1680, "window width")
-	h := flag.Int("h", 960, "window height")
-	flag.Parse()
-	if *out == "" {
-		fmt.Fprintln(os.Stderr, "capture: -out is required")
-		os.Exit(2)
+	cmd := RootCmd()
+	if err := cmd.Execute(); err != nil {
+		fmt.Fprintln(cmd.ErrOrStderr(), "capture:", err)
+		osExit(1)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), *wait+90*time.Second)
-	defer cancel()
-	if err := run(ctx, *chrome, *url, *out, *wait, *scroll, *w, *h, *click, *dark); err != nil {
-		fmt.Fprintln(os.Stderr, "capture:", err)
-		os.Exit(1)
-	}
-	fmt.Println("wrote", *out)
 }

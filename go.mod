@@ -5,9 +5,12 @@ go 1.27.4
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/go-agentsync/agentsync v0.9.0
+	github.com/go-opentype/opentype v0.20.0
+	github.com/go-opentype/shape v0.7.0
 	github.com/go-widgets/mvvm v0.15.0
 	github.com/go-widgets/mvvmtk v0.16.0
-	github.com/go-widgets/painter v0.19.0
+	github.com/go-widgets/painter v0.21.0
+	github.com/go-widgets/svg v0.8.0
 	github.com/go-widgets/toolkit v0.403.0
 	github.com/grpc-transports/websocket v0.2.0
 	github.com/spf13/cobra v1.10.2
@@ -21,9 +24,8 @@ require (
 	github.com/go-icons/iconoir v0.3.0 // indirect
 	github.com/go-images/images v0.3.0 // indirect
 	github.com/go-opentype/fonts v0.14.0 // indirect
-	github.com/go-opentype/opentype v0.20.0 // indirect
-	github.com/go-opentype/shape v0.7.0 // indirect
 	github.com/go-richdoc/richdoc v0.7.0 // indirect
+	github.com/go-simd/boxfilter v0.2.0 // indirect
 	github.com/go-simd/floats v0.42.0 // indirect
 	github.com/go-typeset/bidi v0.3.1 // indirect
 	github.com/go-widgets/textinput v0.1.0 // indirect

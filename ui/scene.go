@@ -901,6 +901,14 @@ func (s *Scene) Draw(buf []byte) {
 	s.host.Draw(p, s.theme)
 }
 
+// DrawTo paints the scene, ground included, through any painter: the same widget
+// tree Draw paints, so a recording painter (the demo capture) shows exactly what
+// the live screen does.
+func (s *Scene) DrawTo(p painter.Painter) {
+	p.FillRect(painter.Rect{W: s.w, H: s.h}, s.theme.Background)
+	s.host.Draw(p, s.theme)
+}
+
 // targets are the widgets that take a click, topmost first: the panel's over the
 // graph's, then the header's, then those of the shown tab.
 func (s *Scene) targets() []toolkit.Widget {

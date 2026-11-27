@@ -24,6 +24,8 @@ github.com/go-opentype/shape v0.7.0 h1:hXUkI4xdpkzq31ZYf/6zfkDAgRLZnTjI1q8DWLu5M
 github.com/go-opentype/shape v0.7.0/go.mod h1:n8pMQ/MH4Oscxwd9J0B7RiZ5gKlD0yagRQKYsAmJ9Rw=
 github.com/go-richdoc/richdoc v0.7.0 h1:vhHypa0y26ulrOz6Aw1RIzeLjSMsFJyU1SzK5jd90lg=
 github.com/go-richdoc/richdoc v0.7.0/go.mod h1:RhxAcqwoUg1pnTYCiRdKILzOZwOmraO0dMJI4N6yY70=
+github.com/go-simd/boxfilter v0.2.0 h1:K9+z/6Axd70hZNA8bxdx9g5egKAzHxJqJiMDYkBffyk=
+github.com/go-simd/boxfilter v0.2.0/go.mod h1:7qVmCWNCFD0PXzlGE52CKE/aUCmihojhB1HRbIqbxX0=
 github.com/go-simd/floats v0.42.0 h1:DYzJXKO2nFJuixbUvcJVEmNluBQJi2mDLg4zEJkJSxU=
 github.com/go-simd/floats v0.42.0/go.mod h1:Aq5a6oY5pUqm9Hpi+iV2nrNmaaUb0rwHvUHIerXWSvA=
 github.com/go-typeset/bidi v0.3.1 h1:fsTa0b9txt2SkH7M55EZ06+q3N9C4O0Oerf+SPLLGFs=
@@ -32,8 +34,10 @@ github.com/go-widgets/mvvm v0.15.0 h1:VvZiLB7gm+5CIEeQH3GNI53ytUndzOznT/fJvaG8hO
 github.com/go-widgets/mvvm v0.15.0/go.mod h1:ZJj5M8zDg/gdzcvdWnJgZj/fcV0qe84fALq+EQVzUOM=
 github.com/go-widgets/mvvmtk v0.16.0 h1:RGQgDsaVWw35mMcAfZzlddd/b7KlSLu9v29rt74tvFU=
 github.com/go-widgets/mvvmtk v0.16.0/go.mod h1:3ikT4ttG3/yFh737beA/q3wxL+BdkpS6kxjvVEfEGU8=
-github.com/go-widgets/painter v0.19.0 h1:a2YcBiISf6JT84kT6xGy7KFExUwGiXrDOESm40diiHQ=
-github.com/go-widgets/painter v0.19.0/go.mod h1:8kERcZUoWNyLIas1NsMWiYynvvyx+hcB2cNIh0Bx0yc=
+github.com/go-widgets/painter v0.21.0 h1:UMvg+lm0hjy96JoI0qHrho6vupJnxuxZuJSmwISRgBA=
+github.com/go-widgets/painter v0.21.0/go.mod h1:uwNd4vsDklrWHtRaq+/Y65/qlw6FWfhXtlWvke1fulw=
+github.com/go-widgets/svg v0.8.0 h1:vTMeuHovbkmux9sr+W1saPkxaJCQIyQazcZM/+bdi3c=
+github.com/go-widgets/svg v0.8.0/go.mod h1:Bp8/VtgA13Qug27H6yrSmUr9HIUHwRwfy9T4nriBZko=
 github.com/go-widgets/textinput v0.1.0 h1:ifx1RjbPIWtlokoBLV1ZwlH+0CeixoMbswlqhNvYNmw=
 github.com/go-widgets/textinput v0.1.0/go.mod h1:Y/k3PDtUEMQ/4psCVKdmUStNWa/EsVAMcCKG2lEtQ5c=
 github.com/go-widgets/toolkit v0.403.0 h1:iey03ts/oKm3B9MqwZVaKDHEbGY6jGslIpWjlEagqiE=

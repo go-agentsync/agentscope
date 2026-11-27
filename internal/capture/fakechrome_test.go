@@ -71,6 +71,10 @@ func fakeChrome(mode string) {
 			}
 			reply := msg{ID: m.ID, Result: []byte(`{}`)}
 			switch {
+			case m.Method == os.Getenv("FAKE_DROP"):
+				return
+			case m.Method == os.Getenv("FAKE_BADRES"):
+				reply.Result = []byte(`"not an object"`)
 			case m.Method == os.Getenv("FAKE_FAIL"):
 				reply.Result = nil
 				reply.Error = &struct {

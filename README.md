@@ -481,9 +481,36 @@ go test -coverprofile=coverage.out -coverpkg=./... ./... && \
 go test -fuzz '^FuzzParseLine$' -fuzztime 30s ./collect # also FuzzScan, FuzzResolve, ...
 go vet -vettool="$(which mvvmlint)" ./...               # the MVVM gate
 go vet -vettool="$(which bricolint)" ./...              # the no-hand-drawn-UI gate
-go run ./internal/capture -out "$HOME/Library/Application Support/agentscope/captures/live.png"
+go run ./internal/capture --out "$HOME/Library/Application Support/agentscope/captures/live.png"
                                                         # a screenshot, after the stream arrived
+go run ./cmd/agentscope capture --scenario colors --out demo.svg   # see below
 ```
+
+### `agentscope capture`: an animated, scalable demo
+
+```sh
+agentscope capture --list                              # the scenarios
+agentscope capture --scenario theme-lang --out demo.svg
+```
+
+Renders a synthetic scenario of the UI, through the same view-model and the same
+scene as the live window, into one animated SVG: text is drawn as glyph outlines
+(it scales without blur), the steps loop with CSS keyframes, and a `<title>`
+carries each string for screen readers. Scenarios: `overview` (tabs, quota,
+guardrails), `colors` (account colours: the Colour dialog, two picks, the chart
+repainted) and `theme-lang` (Light to Dark, then English to French). `--size
+WxH` sets the window (320 to 4096 a side, default 1280x720).
+
+Nothing real is read: accounts, repositories and hosts are made up
+(`acme-demo/*`, "Acme Lab"), the clock is fixed, and the output is byte-for-byte
+the same on every run. The default `--out` is under the user config directory
+(`<config>/agentscope/captures/<scenario>.svg`), and a path inside a git work tree
+is refused. A leak test builds a deny-list from this machine's own agentscope and
+aiquota configuration, `~/.claude.json` and `git config user.email`, adds a
+pattern for any e-mail and any `github.com/<org>`, scans every drawn string, every
+title and attribute of every scenario, and proves it by injecting a real-looking
+value that it must catch. A capture is 2.5 to 3.6 MB: glyph outlines are the price
+of text that scales.
 
 `internal/capture` drives a real Chrome over the DevTools protocol (headless
 `--screenshot` fires at the load event, before the wasm has booted, and shoots an

@@ -905,9 +905,14 @@ func (s *Scene) Draw(buf []byte) {
 // tree Draw paints, so a recording painter (the demo capture) shows exactly what
 // the live screen does.
 func (s *Scene) DrawTo(p painter.Painter) {
+	//bricolint:allow the ground of the screen is a render leaf, the same fill fillBG paints for Draw
 	p.FillRect(painter.Rect{W: s.w, H: s.h}, s.theme.Background)
 	s.host.Draw(p, s.theme)
 }
+
+// PickRGB is the value the Colour dialog's picker holds for an opaque colour, so
+// a caller that only drives the view-model needs no widget import of its own.
+func PickRGB(r, g, b uint8) toolkit.RGBA { return toolkit.RGB(r, g, b) }
 
 // targets are the widgets that take a click, topmost first: the panel's over the
 // graph's, then the header's, then those of the shown tab.

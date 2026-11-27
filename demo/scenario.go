@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-agentsync/agentscope/ui"
-	"github.com/go-widgets/toolkit"
 )
 
 // Env is what a step may touch: the screen and its view-model, the only
@@ -47,7 +46,8 @@ func setPrefs(theme, lang int) func(*Env) {
 // colour walks the Colour dialog of the accounts table as its owner does: select
 // the row, open the dialog, pick, confirm. The server's answer is the next
 // snapshot, which is what Send does here.
-func colour(row int, pick toolkit.RGBA, held *[2]string) []Step {
+func colour(row int, r, g, b uint8, held *[2]string) []Step {
+	pick := ui.PickRGB(r, g, b)
 	return []Step{
 		{beat, func(e *Env) { e.VM.CapSel.Set(row) }},
 		{beat, func(e *Env) { e.VM.Color.Begin.Execute() }},
@@ -82,8 +82,8 @@ var scenarios = []Scenario{
 			{beat, apply("", "")},
 			{beat, func(e *Env) { e.VM.Tab.Set(ui.TabQuota) }},
 		}
-		steps = append(steps, colour(0, toolkit.RGB(0xD5, 0x5E, 0x00), held)...)
-		steps = append(steps, colour(1, toolkit.RGB(0x00, 0x72, 0xB2), held)...)
+		steps = append(steps, colour(0, 0xD5, 0x5E, 0x00, held)...)
+		steps = append(steps, colour(1, 0x00, 0x72, 0xB2, held)...)
 		return append(steps, Step{2 * beat, func(e *Env) { e.VM.CapSel.Set(-1) }})
 	}},
 	{"theme-lang", "agentscope theme and language: Light to Dark, English to French", func() []Step {

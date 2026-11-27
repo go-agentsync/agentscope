@@ -7,7 +7,8 @@ A live graphical view of the Claude Code agent network on **this machine**: whic
 sessions and sub-agents exist, what task each has, which repository each holds,
 and the messages between them. Built for the "about 25 sessions at once" case that
 [`agentsync`](https://github.com/go-agentsync/agentsync) exists to coordinate, and
-where `agentsync claims` can only list leases.
+where `agentsync claims` can only list leases. Landing page:
+<https://go-agentsync.github.io/>.
 
 ```
 agentscope snapshot            # one snapshot in the terminal
@@ -497,9 +498,8 @@ control that proves the guard still bites.
 ## Known limits
 
 Timings were not taken on a quiet machine, only macOS has been exercised
-([#2](https://github.com/go-agentsync/agentscope/issues/2)), and there are no org
-landing or docs surfaces yet
-([#3](https://github.com/go-agentsync/agentscope/issues/3)).
+([#2](https://github.com/go-agentsync/agentscope/issues/2)). The organisation
+landing page is <https://go-agentsync.github.io/>; there is no docs site page yet.
 
 ## License
 

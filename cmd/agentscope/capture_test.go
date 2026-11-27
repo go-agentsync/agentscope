@@ -62,15 +62,18 @@ func TestCaptureDefaultOutIsUnderTheConfigDirectory(t *testing.T) {
 func TestCaptureRefusals(t *testing.T) {
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".git"), 0o755)
-	for name, args := range map[string][]string{
-		"a bad size":       {"--size", "huge"},
-		"an unknown name":  {"--scenario", "nope", "--out", filepath.Join(t.TempDir(), "x.svg")},
-		"a git work tree":  {"--out", filepath.Join(repo, "x.svg")},
-		"a positional arg": {"extra"},
-		"a tiny window":    {"--size", "10x10"},
+	for name, c := range map[string]struct {
+		args []string
+		want string
+	}{
+		"a bad size":       {[]string{"--size", "huge"}, "WIDTHxHEIGHT"},
+		"an unknown name":  {[]string{"--scenario", "nope", "--out", filepath.Join(t.TempDir(), "x.svg")}, `unknown scenario "nope"`},
+		"a git work tree":  {[]string{"--out", filepath.Join(repo, "x.svg")}, "refusing to write a capture inside a git work tree"},
+		"a positional arg": {[]string{"extra"}, "unknown command"},
+		"a tiny window":    {[]string{"--size", "10x10"}, "each 320 to 4096"},
 	} {
-		if _, err := runCapture(t, args...); err == nil {
-			t.Errorf("%s was accepted", name)
+		if msg, err := runCapture(t, c.args...); err == nil || !strings.Contains(err.Error()+msg, c.want) {
+			t.Errorf("%s: err = %v, want it to say %q", name, err, c.want)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(repo, "x.svg")); err == nil {
@@ -81,8 +84,14 @@ func TestCaptureRefusals(t *testing.T) {
 func TestCaptureWithoutAHomeFails(t *testing.T) {
 	t.Setenv("HOME", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
-	if _, err := runCapture(t, "--size", "320x320"); err == nil {
+	_, err := runCapture(t, "--size", "320x320")
+	if err == nil {
 		t.Skip("this platform has a config directory without HOME")
+	}
+	// The error is the config directory's, not the work-tree refusal a relative
+	// path in this repository would give if the guard were dropped.
+	if !strings.Contains(err.Error(), "HOME") {
+		t.Errorf("err = %v", err)
 	}
 }
 

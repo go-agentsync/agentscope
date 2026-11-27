@@ -188,7 +188,7 @@ func TestInsideGitTreeReportsAnUnresolvablePath(t *testing.T) {
 	if in, err := InsideGitTree("x"); in || err == nil {
 		t.Errorf("%v %v", in, err)
 	}
-	if r, err := Write("overview", "x.svg", Options{}); r != nil || err == nil {
+	if r, err := Write("overview", filepath.Join(t.TempDir(), "x.svg"), Options{}); r != nil || err == nil {
 		t.Errorf("a capture was written to an unresolvable path: %v %v", r, err)
 	}
 }

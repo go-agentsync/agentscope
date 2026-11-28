@@ -24,7 +24,7 @@ func captureCmd() *cobra.Command {
 			"Nothing is read from this machine; the same scenario gives the same bytes.\n" +
 			"The default --out is a directory under the user's config directory, and a path\n" +
 			"inside a git work tree is refused. The format is --format, or the extension of\n" +
-			"--out; the two must agree. A WebM needs a size that is a multiple of 16.",
+			"--out; the two must agree. A WebM takes any size: the encoder pads to whole blocks itself.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			w := cmd.OutOrStdout()

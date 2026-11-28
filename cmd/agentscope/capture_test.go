@@ -19,6 +19,24 @@ func runCapture(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
+// The help must not state a size rule the encoder dropped (avkit v0.20.2 pads
+// to whole blocks itself).
+func TestCaptureHelpStatesNoSizeRule(t *testing.T) {
+	out, err := runCapture(t, "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flat := strings.ToLower(strings.Join(strings.Fields(out), " "))
+	for _, bad := range []string{"multiple of 16", "multiple of sixteen", "16-aligned", "aligned to 16"} {
+		if strings.Contains(flat, bad) {
+			t.Errorf("the help states the dropped size rule %q:\n%s", bad, out)
+		}
+	}
+	if !strings.Contains(flat, "any size") {
+		t.Errorf("the help does not say a WebM takes any size:\n%s", out)
+	}
+}
+
 func TestCaptureListsTheScenarios(t *testing.T) {
 	out, err := runCapture(t, "--list")
 	if err != nil {

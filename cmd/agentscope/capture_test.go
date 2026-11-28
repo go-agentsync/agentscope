@@ -59,6 +59,67 @@ func TestCaptureDefaultOutIsUnderTheConfigDirectory(t *testing.T) {
 	}
 }
 
+func TestCaptureWritesAWebM(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "sub", "demo.webm") // the extension alone names the format
+	msg, err := runCapture(t, "--scenario", "theme-lang", "--size", "640x384", "--out", out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(out)
+	// An EBML header opens a WebM; the SVG writer would have written "<svg".
+	if err != nil || !bytes.HasPrefix(b, []byte{0x1a, 0x45, 0xdf, 0xa3}) || !bytes.Contains(b, []byte("webm")) {
+		t.Fatalf("not a WebM: %v", err)
+	}
+	if !strings.Contains(msg, "wrote "+out) || !strings.Contains(msg, "7 slots") || !strings.Contains(msg, "quantizer 10") || !strings.Contains(msg, "640x384") {
+		t.Errorf("summary %q", msg)
+	}
+	out2 := filepath.Join(t.TempDir(), "q")
+	if _, err := runCapture(t, "--scenario", "theme-lang", "--size", "640x384", "--format", "webm", "--quality", "30", "--out", out2); err != nil {
+		t.Fatal(err)
+	}
+	b2, _ := os.ReadFile(out2)
+	if len(b2) >= len(b) {
+		t.Errorf("quantizer 30 gave %d bytes, quantizer 10 gave %d", len(b2), len(b))
+	}
+}
+
+func TestCaptureWebMDefaultOutKeepsTheFormat(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
+	msg, err := runCapture(t, "--scenario", "theme-lang", "--size", "640x384", "--format", "webm")
+	if err != nil || !strings.Contains(msg, filepath.Join("agentscope", "captures", "theme-lang.webm")) {
+		t.Errorf("%v, summary %q", err, msg)
+	}
+}
+
+func TestCaptureWebMRefusals(t *testing.T) {
+	repo := t.TempDir()
+	os.MkdirAll(filepath.Join(repo, ".git"), 0o755)
+	dir := t.TempDir()
+	for name, c := range map[string]struct {
+		args []string
+		want string
+	}{
+		"a format against the extension": {[]string{"--format", "svg", "--out", filepath.Join(dir, "a.webm")}, "contradicts"},
+		"a webm against an svg name":     {[]string{"--format", "webm", "--out", filepath.Join(dir, "a.svg")}, "contradicts"},
+		"an unknown format":              {[]string{"--format", "gif"}, "want svg or webm"},
+		"a quality on an svg":            {[]string{"--quality", "5", "--out", filepath.Join(dir, "a.svg")}, "webm only"},
+		"a quality out of range":         {[]string{"--format", "webm", "--quality", "64"}, "--quality 64"},
+		"an unaligned size":              {[]string{"--format", "webm", "--size", "1366x768"}, "not a multiple of 16"},
+		"a git work tree":                {[]string{"--out", filepath.Join(repo, "x.webm"), "--size", "640x384"}, "refusing to write a capture inside a git work tree"},
+	} {
+		if msg, err := runCapture(t, c.args...); err == nil || !strings.Contains(err.Error()+msg, c.want) {
+			t.Errorf("%s: err = %v, want it to say %q", name, err, c.want)
+		}
+	}
+	for _, p := range []string{filepath.Join(repo, "x.webm"), filepath.Join(dir, "a.webm"), filepath.Join(dir, "a.svg")} {
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("%s was written despite the refusal", p)
+		}
+	}
+}
+
 func TestCaptureRefusals(t *testing.T) {
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, ".git"), 0o755)

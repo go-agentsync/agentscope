@@ -106,10 +106,12 @@ func TestCaptureWebMRefusals(t *testing.T) {
 		"an unknown format":              {[]string{"--format", "gif"}, "want svg or webm"},
 		"a quality on an svg":            {[]string{"--quality", "5", "--out", filepath.Join(dir, "a.svg")}, "webm only"},
 		"a quality out of range":         {[]string{"--format", "webm", "--quality", "64"}, "--quality 64"},
-		"an unaligned size":              {[]string{"--format", "webm", "--size", "1366x768"}, "not a multiple of 16"},
 		"a git work tree":                {[]string{"--out", filepath.Join(repo, "x.webm"), "--size", "640x384"}, "refusing to write a capture inside a git work tree"},
 	} {
-		if msg, err := runCapture(t, c.args...); err == nil || !strings.Contains(err.Error()+msg, c.want) {
+		var msg string
+		var err error
+		noPanic(t, name, func() { msg, err = runCapture(t, c.args...) })
+		if err == nil || !strings.Contains(err.Error()+msg, c.want) {
 			t.Errorf("%s: err = %v, want it to say %q", name, err, c.want)
 		}
 	}

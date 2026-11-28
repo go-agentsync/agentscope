@@ -5,7 +5,7 @@ go 1.27.4
 require (
 	github.com/coder/websocket v1.8.15
 	github.com/go-agentsync/agentsync v0.9.0
-	github.com/go-avkit/avkit v0.20.1
+	github.com/go-avkit/avkit v0.20.2
 	github.com/go-gfx/gfx v0.42.0
 	github.com/go-opentype/opentype v0.20.0
 	github.com/go-opentype/shape v0.7.0

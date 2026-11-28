@@ -11,7 +11,7 @@ require (
 	github.com/go-widgets/mvvmtk v0.16.0
 	github.com/go-widgets/painter v0.22.0
 	github.com/go-widgets/svg v0.9.0
-	github.com/go-widgets/toolkit v0.408.0
+	github.com/go-widgets/toolkit v0.409.0
 	github.com/grpc-transports/websocket v0.2.0
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/grpc v1.85.0

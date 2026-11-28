@@ -33,7 +33,11 @@ type Scenario struct {
 const beat = 1500 * time.Millisecond
 
 func apply(lab, personal string) func(*Env) {
-	return func(e *Env) { e.VM.Apply(Snapshot(lab, personal)) }
+	// A snapshot only arrives on a live connection, so the status pill says so.
+	return func(e *Env) {
+		e.VM.SetConn("connected", "")
+		e.VM.Apply(Snapshot(lab, personal))
+	}
 }
 
 func setPrefs(theme, lang int) func(*Env) {

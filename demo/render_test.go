@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -117,6 +118,24 @@ func allFrames(t *testing.T, r *Result) []string {
 	return out
 }
 
+// A snapshot only arrives on a live connection: once the graph is populated the
+// status pill must not still say "connecting".
+func TestScenarioReachesTheConnectedState(t *testing.T) {
+	r, err := Render("theme-lang", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr := allFrames(t, r)
+	for i := 1; i < len(fr); i++ {
+		if strings.Contains(fr[i], "connecting") || strings.Contains(fr[i], "connexion") {
+			t.Errorf("frame %d still shows the connecting state", i)
+		}
+	}
+	if !slices.Contains(r.Texts, "connected") {
+		t.Error("the connected pill is never drawn")
+	}
+}
+
 func TestThemeAndLanguageSwitch(t *testing.T) {
 	r, err := Render("theme-lang", Options{})
 	if err != nil {
@@ -157,8 +176,10 @@ func TestRenderIsVectorOutsideIcons(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if r.Raster > 20 {
-			t.Errorf("%s: %d raster elements; text fell back to bitmaps", n, r.Raster)
+		// A few icons a frame (the logo, the search magnifier, a drop-down arrow) are
+		// bitmaps; a text fallback would add dozens.
+		if r.Raster > 3*r.Frames {
+			t.Errorf("%s: %d raster elements in %d frames; text fell back to bitmaps", n, r.Raster, r.Frames)
 		}
 	}
 }

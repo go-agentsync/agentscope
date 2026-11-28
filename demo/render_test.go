@@ -237,6 +237,8 @@ func TestWriteRefusesAGitTreeAndCreatesDirectories(t *testing.T) {
 	os.MkdirAll(filepath.Join(root, "repo", ".git"), 0o755)
 	if _, err := Write("overview", filepath.Join(root, "repo", "x.svg"), Options{}); err == nil || !strings.Contains(err.Error(), "refusing") {
 		t.Fatalf("err = %v", err)
+	} else if strings.Contains(err.Error(), "<nil>") {
+		t.Fatalf("the refusal formats a nil error: %q", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "repo", "x.svg")); err == nil {
 		t.Fatal("a capture was written inside a git work tree")

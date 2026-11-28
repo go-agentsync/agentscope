@@ -34,6 +34,9 @@ func TestRunRefusesAGitTreeBeforeStartingAnything(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "refusing") {
 		t.Fatalf("want a refusal, got %v", err)
 	}
+	if strings.Contains(err.Error(), "<nil>") {
+		t.Fatalf("the refusal formats a nil error: %q", err)
+	}
 	if _, serr := os.Stat(filepath.Join(root, "x.png")); serr == nil {
 		t.Fatal("a capture was written inside a git work tree")
 	}

@@ -81,7 +81,7 @@ func RootCmd() *cobra.Command {
 		Args:         cobra.NoArgs,
 		RunE:         func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
-	root.AddCommand(snapshotCmd(), serveCmd(), stampCmd(), &cobra.Command{
+	root.AddCommand(snapshotCmd(), serveCmd(), stampCmd(), captureCmd(), &cobra.Command{
 		Use:   "version",
 		Short: "Print the version",
 		Args:  cobra.NoArgs,

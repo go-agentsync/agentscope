@@ -493,6 +493,8 @@ agentscope capture --list                              # the scenarios
 agentscope capture --scenario theme-lang --out demo.svg
 ```
 
+<img src="https://go-agentsync.github.io/img/agentscope-demo.svg" width="640" alt="agentscope recorded by agentscope capture: Light to Dark, English to French">
+
 Renders a synthetic scenario of the UI, through the same view-model and the same
 scene as the live window, into one animated SVG: text is drawn as glyph outlines
 (it scales without blur), the steps loop with CSS keyframes, and a `<title>`
@@ -509,8 +511,10 @@ is refused. A leak test builds a deny-list from this machine's own agentscope an
 aiquota configuration, `~/.claude.json` and `git config user.email`, adds a
 pattern for any e-mail and any `github.com/<org>`, scans every drawn string, every
 title and attribute of every scenario, and proves it by injecting a real-looking
-value that it must catch. A capture is 2.5 to 3.6 MB: glyph outlines are the price
-of text that scales.
+value that it must catch. A capture is 2.5 to 3.6 MB raw (about 700 KB gzipped, which
+Pages and most hosts apply): glyph outlines (about 60 %) and one-pixel rectangles
+from the chart and graph (about 35 %) are the price of text that scales; the five
+embedded PNGs are 4 KB.
 
 `internal/capture` drives a real Chrome over the DevTools protocol (headless
 `--screenshot` fires at the load event, before the wasm has booted, and shoots an

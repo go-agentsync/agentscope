@@ -18,10 +18,10 @@ const (
 	gap       = 12
 	headerH   = 56
 	connW     = 104
-	chipW     = 104
+	chipW     = 88
 	searchW   = 280
-	expiredW  = 150
-	toggleW   = 96
+	expiredW  = 130
+	toggleW   = 116
 	iconW     = 30
 	titleW    = 120
 	cardPad   = 12
@@ -150,8 +150,10 @@ func NewScene(w, h int) *Scene {
 	s := &Scene{w: w, h: h, scale: 1, theme: toolkit.Slate(Brand, false), vm: vm, clock: time.Now}
 
 	s.search = toolkit.NewSearchEntry("")
-	// Without an Icon the entry draws "?" as a stand-in for the magnifier.
-	s.search.Icon = toolkit.DrawIconSearch
+	// Without an Icon the entry draws "?" as a stand-in for the magnifier; the
+	// toolkit's own DrawIconSearch is a pixel-art square lens that reads as a
+	// glyph from a missing font, so the real Iconoir magnifier is drawn instead.
+	s.search.Icon = iconoir.Drawer("search")
 	s.expired = toolkit.NewCheckButton("", false)
 	s.toggle = toolkit.NewButton("", nil)
 	s.tabs = toolkit.NewNotebook()
@@ -522,8 +524,8 @@ func (s *Scene) layout() {
 	}
 	top.AddFlex(s.search, 1) // the search takes what the fixed parts leave
 	top.AddFixed(s.expired, px(expiredW))
-	top.AddFixed(s.themeDD, px(selectW))
-	top.AddFixed(s.langDD, px(selectW))
+	top.AddFixed(s.themeDD, px(themeW))
+	top.AddFixed(s.langDD, px(langW))
 	top.AddFixed(s.toggle, px(toggleW))
 	header := card("", top, cardPad)
 
@@ -554,9 +556,13 @@ func (s *Scene) layout() {
 	s.refreshGuard()
 }
 
-// selectW is the width, in logical pixels, of each of the header's theme and
-// language selectors.
-const selectW = 96
+// themeW and langW are the widths, in logical pixels, of the header's theme and
+// language selectors: each holds its longest choice in either language
+// ("Thème : Système", "Language: Auto") beside the chevron.
+const (
+	themeW = 144
+	langW  = 132
+)
 
 // narrowTitleW and narrowConnW are the logical widths below which the header drops
 // the name, then the connection chip, to keep the selectors on screen.
@@ -567,7 +573,7 @@ const (
 
 // wideHeaderW is the logical width from which the header has room for the model
 // chips beside the search.
-const wideHeaderW = 1100
+const wideHeaderW = 1280
 
 // buildPanel makes the side panel's containers out of its widgets: a top bar
 // (title and close button), the filter row, the sessions table, and the Details

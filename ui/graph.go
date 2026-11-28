@@ -123,6 +123,7 @@ func buildGraph(s model.Snapshot, expanded map[string]bool) graphData {
 	}
 
 	add := func(n toolkit.GraphNode) {
+		n.Label = fitNodeLabel(n.Label)
 		g.nodes = append(g.nodes, n)
 		g.nodeCluster[n.ID] = n.Cluster
 		drawn[n.ID] = true
@@ -301,6 +302,27 @@ func orgOf(key string) string {
 		return ""
 	}
 	return org
+}
+
+// nodeTextW is the width a node label may take: the node less the chip's padding.
+const nodeTextW = NodeWidth - 12
+
+// fitNodeLabel cuts a label to what its node can show. NodeChars counts
+// characters, and a proportional face is wider than the count says ("acme-demo/
+// api-gateway" is 21 characters and ran past the box), so the width is measured.
+func fitNodeLabel(s string) string { return fitNodeLabelIn(s, nodeTextW) }
+
+func fitNodeLabelIn(s string, w int) string {
+	if toolkit.TextWidth(s) <= w {
+		return s
+	}
+	r := []rune(s)
+	for n := len(r) - 1; n > 0; n-- {
+		if c := strings.TrimRight(string(r[:n]), " ") + "…"; toolkit.TextWidth(c) <= w {
+			return c
+		}
+	}
+	return "…"
 }
 
 // RepoLabel is org/repo cut to at most max characters. When it does not fit,

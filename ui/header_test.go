@@ -21,6 +21,16 @@ func TestNodeLabelsFitTheirChip(t *testing.T) {
 	if got := fitNodeLabel("acme-demo/api-gateway-with-a-very-long-name"); got[len(got)-3:] != "…" {
 		t.Errorf("a cut label ends with an ellipsis, got %q", got)
 	}
+	// The cut keeps as much as fits: one more letter would overflow.
+	long := "acme-demo/api-gateway-with-a-very-long-name"
+	got := []rune(fitNodeLabel(long))
+	kept := len(got) - 1
+	if toolkit.TextWidth(long[:kept+1]+"…") <= nodeTextW {
+		t.Errorf("%q keeps %d letters but %d would fit", string(got), kept, kept+1)
+	}
+	if kept < 10 {
+		t.Errorf("%q is cut far too short", string(got))
+	}
 	// Nothing fits: the ellipsis alone.
 	if got := fitNodeLabelIn("WWWWWWWW", 1); got != "…" {
 		t.Errorf("got %q", got)

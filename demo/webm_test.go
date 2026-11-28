@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -124,6 +125,10 @@ func TestWebMDecodesBackAtTheDefaultSize(t *testing.T) {
 }
 
 func decodeBack(t *testing.T, o Options) {
+	if runtime.GOARCH == "386" {
+		// Never loosen the bound for it: govpx encodes at only 21 to 31 dB there.
+		t.Skip("linux/386: govpx encodes at 21-31 dB, https://github.com/go-avkit/avkit/issues/137")
+	}
 	deny := realDeny()
 	for _, n := range Names() {
 		w, err := RenderWebM(n, o, 0)
@@ -281,34 +286,33 @@ func FuzzResolveFormat(f *testing.F) {
 	})
 }
 
-func TestCheckWebM(t *testing.T) {
+func TestCheckQuality(t *testing.T) {
 	for _, c := range []struct {
-		w, h, q int
-		err     string
+		q   int
+		err string
 	}{
-		{1280, 720, 0, ""}, // 720 = 45 x 16: aligned
-		{1280, 720, 64, "--quality 64"},
-		{1280, 720, -1, "--quality -1"},
-		{1366, 768, 0, "not a multiple of 16"},
-		{1280, 721, 0, "not a multiple of 16"},
-		{1280, 720, 1, ""},
-		{640, 400, 63, ""},
+		{0, ""},
+		{64, "--quality 64"},
+		{-1, "--quality -1"},
+		{1, ""},
+		{63, ""},
 	} {
-		err := CheckWebM(c.w, c.h, c.q)
+		err := CheckQuality(c.q)
 		if c.err == "" && err != nil || c.err != "" && (err == nil || !strings.Contains(err.Error(), c.err)) {
-			t.Errorf("CheckWebM(%d, %d, %d) = %v, want %q", c.w, c.h, c.q, err, c.err)
+			t.Errorf("CheckQuality(%d) = %v, want %q", c.q, err, c.err)
 		}
 	}
 }
 
-func TestWebMRefusesAnUnalignedSize(t *testing.T) {
-	// govpx reads whole macroblocks from unpadded planes (thesyncim/govpx#143).
-	if _, err := RenderWebM("overview", Options{W: 1366, H: 768}, 0); err == nil || !strings.Contains(err.Error(), "multiple of 16") {
-		t.Errorf("err = %v", err)
-	}
-	if _, err := RenderWebM("overview", Options{W: 640, H: 360}, 0); err == nil {
-		t.Error("640x360 accepted")
-	}
+// A size that is not a multiple of 16 on either side is taken: vp8enc pads the
+// planes to whole macroblocks (avkit v0.20.2) and the key frame carries the real
+// size, so the decoded picture is the window's, and the bound still holds.
+func TestWebMDecodesBackAtASizeThatIsNotAMultipleOf16(t *testing.T) {
+	decodeBack(t, Options{W: 1366, H: 768})
+	decodeBack(t, Options{W: 640, H: 360})
+}
+
+func TestWebMRefusesWhatItCannotEncode(t *testing.T) {
 	if _, err := RenderWebM("overview", Options{W: 640, H: 384}, 99); err == nil {
 		t.Error("quality 99 accepted")
 	}

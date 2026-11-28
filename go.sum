@@ -18,8 +18,8 @@ github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707/go.mod h1:qssHWj6
 github.com/dsnet/golib v0.0.0-20171103203638-1ea166775780/go.mod h1:Lj+Z9rebOhdfkVLjJ8T6VcRQv3SXugXy999NBtR9aFY=
 github.com/go-agentsync/agentsync v0.9.0 h1:f9OFW8/FgIn6sqO/AUmbstXVUYAj+QXOcKUqWQTeFmw=
 github.com/go-agentsync/agentsync v0.9.0/go.mod h1:24ud2lR3Q6ePLAhwLpc+2wZsM6mWPl3PK/sOhkKPutI=
-github.com/go-avkit/avkit v0.20.1 h1:yei+Qudfr7BbSNqnZkCKhCTo4rst55oS9uf1fYyhvL0=
-github.com/go-avkit/avkit v0.20.1/go.mod h1:MujBLm0iQjb5ZCiuvrwbnyay19j3aX03dcGAenO0oJE=
+github.com/go-avkit/avkit v0.20.2 h1:XnfBjHP1skvcrCxd6ERJsy2CXbiTDDPSWmmQkaaluIc=
+github.com/go-avkit/avkit v0.20.2/go.mod h1:MujBLm0iQjb5ZCiuvrwbnyay19j3aX03dcGAenO0oJE=
 github.com/go-crdt/crdt v0.59.0 h1:2gp9+qVo6zN4Y5A6fUKkHufZjJGUJQZ2R4xecDrO0xQ=
 github.com/go-crdt/crdt v0.59.0/go.mod h1:kHlReXEoryOyNeoSZv7GizHHuSZ+DmVi2AuGIRb0jNc=
 github.com/go-gfx/gfx v0.42.0 h1:6z6RlJTJrfcnJTzd/T2yZ+fAKcs6356GYq9xw1YC0hg=

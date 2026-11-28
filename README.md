@@ -519,11 +519,12 @@ agentscope capture --scenario overview --format webm --out overview.webm
 The encoder runs at its slow preset (`CPUUsed` 4, screen-content mode), which
 keeps UI text sharp, at a constant quantizer: `--quality 1` (best) to `63`
 (worst), default 10. A 1280x720 capture is 230 to 410 KB and takes 0.5 to 0.8 s.
-The size must be a multiple of 16 on both sides (1280x720 is): the encoder reads
-whole macroblocks, and a size that is not is refused, with a message, until the
-encoder pads its planes. The bytes are the same on every run (a test encodes
+Any size works, a multiple of 16 or not (1366x768 included): the encoder pads its
+planes to whole macroblocks and the video keeps the window's size. The bytes are the same on every run (a test encodes
 one scenario three times and compares them; the muxer writes no clock). A test
-decodes every scenario back, at 640x384 and at the default 1280x720, and asserts at
+decodes every scenario back, at 640x384, 640x360, 1366x768 and the default
+1280x720 (not on linux/386, where govpx encodes at 21 to 31 dB,
+go-avkit/avkit#137), and asserts at
 least 40 dB PSNR against the SVG frames; another checks the file against the
 guidelines (DocType `webm`, Codec ID `V_VP8`, Cues before the
 first Cluster, a key frame first, carrying the right size); the leak scan reads

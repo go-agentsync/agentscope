@@ -30,11 +30,7 @@ const (
 	// MinQuality and MaxQuality bound the --quality flag: avkit's vp8enc takes
 	// 1 to 63 (the bitstream's own quantizer index is 7 bits, RFC 6386 section 9.6).
 	MinQuality, MaxQuality = 1, 63
-	// MBSize is the VP8 macroblock size: the encoder reads whole 16x16
-	// macroblocks, so until avkit pads the planes a size must be a multiple. The
-	// bitstream itself allows other sizes (RFC 6386 section 9.1: the excess is
-	// cropped), which is what the padding will use.
-	MBSize = 16
+	MBSize                 = 16
 )
 
 // Format names.
@@ -67,15 +63,11 @@ func ResolveFormat(format, out string) (string, error) {
 	return "", fmt.Errorf("--format %q: want svg or webm", truncate(format, 40))
 }
 
-// CheckWebM refuses what the encoder cannot take: a quality outside 1 to 63 and a
-// size that is not a multiple of 16 (govpx reads whole macroblocks from unpadded
-// planes, thesyncim/govpx#143; avkit will pad them).
-func CheckWebM(w, h, quality int) error {
+// CheckQuality refuses a quality outside 1 to 63 (0 is the default). Any size is
+// taken: avkit's vp8enc pads the planes to whole macroblocks itself (v0.20.2).
+func CheckQuality(quality int) error {
 	if quality != 0 && (quality < MinQuality || quality > MaxQuality) {
 		return fmt.Errorf("--quality %d: want %d to %d", quality, MinQuality, MaxQuality)
-	}
-	if w%MBSize != 0 || h%MBSize != 0 {
-		return fmt.Errorf("webm: size %dx%d is not a multiple of %d on both sides; the VP8 encoder reads whole macroblocks (try 1280x720)", w, h, MBSize)
 	}
 	return nil
 }
@@ -160,7 +152,7 @@ func RenderWebM(name string, o Options, quality int) (*WebM, error) {
 	if o.W == 0 && o.H == 0 {
 		o.W, o.H, _ = ParseSize(DefaultSize)
 	}
-	if err := CheckWebM(o.W, o.H, quality); err != nil {
+	if err := CheckQuality(quality); err != nil {
 		return nil, err
 	}
 	if quality == 0 {

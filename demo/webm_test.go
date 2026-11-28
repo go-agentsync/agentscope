@@ -114,10 +114,19 @@ func decodeSlots(t *testing.T, w *WebM) []*image.YCbCr {
 	return out
 }
 
-func TestWebMDecodesBackToTheSVGFrames(t *testing.T) {
+func TestWebMDecodesBackToTheSVGFrames(t *testing.T) { decodeBack(t, alignedOpts) }
+
+// The bound holds at the size the program records by default, not only at the
+// small test size.
+func TestWebMDecodesBackAtTheDefaultSize(t *testing.T) {
+	w, h, _ := ParseSize(DefaultSize)
+	decodeBack(t, Options{W: w, H: h})
+}
+
+func decodeBack(t *testing.T, o Options) {
 	deny := realDeny()
 	for _, n := range Names() {
-		w, err := RenderWebM(n, alignedOpts, 0)
+		w, err := RenderWebM(n, o, 0)
 		if err != nil {
 			t.Fatalf("%s: %v", n, err)
 		}
@@ -143,7 +152,7 @@ func TestWebMDecodesBackToTheSVGFrames(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			img, err := gfxRasterizer{}.Rasterize(svgFrame, alignedOpts.W, alignedOpts.H)
+			img, err := gfxRasterizer{}.Rasterize(svgFrame, o.W, o.H)
 			if err != nil {
 				t.Fatalf("%s frame %d: %v", n, i, err)
 			}
@@ -153,7 +162,52 @@ func TestWebMDecodesBackToTheSVGFrames(t *testing.T) {
 				t.Errorf("%s frame %d: PSNR %.2f dB below %.0f", n, i, ps, minWebMPSNR)
 			}
 		}
-		t.Logf("%s: %d bytes, %d frames, mean PSNR %.2f dB", n, len(w.Bytes), len(pics), sum/float64(len(pics)))
+		t.Logf("%dx%d %s: %d bytes, %d frames, mean PSNR %.2f dB", o.W, o.H, n, len(w.Bytes), len(pics), sum/float64(len(pics)))
+	}
+}
+
+// TestWebMFollowsTheContainerGuidelines checks the file against what the WebM
+// container guidelines (https://www.webmproject.org/docs/container/) and RFC 6386
+// say, as read: DocType "webm", Codec ID "V_VP8", a Cues
+// element before the first Cluster, a key frame first (RFC 6386 section 9.1: frame
+// type bit 0, start code 9d 01 2a, then the 14-bit width and height).
+func TestWebMFollowsTheContainerGuidelines(t *testing.T) {
+	w, err := RenderWebM("overview", alignedOpts, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := w.Bytes
+	// EBML IDs with their size byte: DocType 0x4282 (4 bytes), CodecID 0x86 (5 bytes).
+	for what, want := range map[string][]byte{
+		"DocType webm":  {0x42, 0x82, 0x84, 'w', 'e', 'b', 'm'},
+		"CodecID V_VP8": {0x86, 0x85, 'V', '_', 'V', 'P', '8'},
+		"Cues":          {0x1C, 0x53, 0xBB, 0x6B},
+		"Cluster":       {0x1F, 0x43, 0xB6, 0x75},
+	} {
+		if !bytes.Contains(b, want) {
+			t.Errorf("%s: not found in the file", what)
+		}
+	}
+	if cues, cluster := bytes.Index(b, []byte{0x1C, 0x53, 0xBB, 0x6B}), bytes.Index(b, []byte{0x1F, 0x43, 0xB6, 0x75}); cues < 0 || cluster < 0 || cues > cluster {
+		t.Errorf("Cues at %d, first Cluster at %d: Cues should come before the clusters", cues, cluster)
+	}
+	r, err := container.NewReader(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ss, err := r.Samples(r.File().VideoTracks()[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ss) == 0 {
+		t.Fatal("no samples")
+	}
+	d := ss[0].Data
+	if len(d) < 10 || d[0]&1 != 0 || d[3] != 0x9d || d[4] != 0x01 || d[5] != 0x2a {
+		t.Fatalf("the first sample is not a key frame: % x", d[:min(10, len(d))])
+	}
+	if kw, kh := int(d[6])|int(d[7]&0x3f)<<8, int(d[8])|int(d[9]&0x3f)<<8; kw != alignedOpts.W || kh != alignedOpts.H {
+		t.Errorf("the key frame says %dx%d, want %dx%d", kw, kh, alignedOpts.W, alignedOpts.H)
 	}
 }
 
@@ -258,8 +312,10 @@ func TestWebMRefusesAnUnalignedSize(t *testing.T) {
 	if _, err := RenderWebM("overview", Options{W: 640, H: 384}, 99); err == nil {
 		t.Error("quality 99 accepted")
 	}
-	if _, err := RenderWebM("nope", alignedOpts, 0); err == nil {
-		t.Error("an unknown scenario accepted")
+	var unknown error
+	noPanic(t, "RenderWebM of an unknown scenario", func() { _, unknown = RenderWebM("nope", alignedOpts, 0) })
+	if unknown == nil || !strings.Contains(unknown.Error(), "unknown scenario") {
+		t.Errorf("an unknown scenario: %v", unknown)
 	}
 }
 
@@ -285,7 +341,9 @@ func TestWebMFailuresReachTheCaller(t *testing.T) {
 	newVP8 = old
 	// A rasteriser answering the wrong size is refused by Video; a doc that gfx
 	// cannot parse by the rasteriser.
-	if _, err := (gfxRasterizer{}).Rasterize([]byte("<svg"), 640, 384); err == nil {
+	var broken error
+	noPanic(t, "Rasterize of a broken document", func() { _, broken = (gfxRasterizer{}).Rasterize([]byte("<svg"), 640, 384) })
+	if broken == nil {
 		t.Error("a broken document rasterised")
 	}
 	if _, err := (gfxRasterizer{}).Rasterize([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>`), 640, 384); err == nil || !strings.Contains(err.Error(), "want 640x384") {
@@ -329,8 +387,12 @@ func TestWriteWebMRefusesAGitTreeAndWrites(t *testing.T) {
 	if _, err := WriteWebM("theme-lang", filepath.Join(repo, "a.webm"), alignedOpts, 0); err == nil {
 		t.Error("written inside a work tree")
 	}
-	if _, err := WriteWebM("nope", filepath.Join(t.TempDir(), "a.webm"), alignedOpts, 0); err == nil {
-		t.Error("an unknown scenario written")
+	var unknown error
+	noPanic(t, "WriteWebM of an unknown scenario", func() {
+		_, unknown = WriteWebM("nope", filepath.Join(t.TempDir(), "a.webm"), alignedOpts, 0)
+	})
+	if unknown == nil || !strings.Contains(unknown.Error(), "unknown scenario") {
+		t.Errorf("an unknown scenario written: %v", unknown)
 	}
 	out := filepath.Join(t.TempDir(), "d", "a.webm")
 	w, err := WriteWebM("theme-lang", out, alignedOpts, 0)
@@ -348,7 +410,9 @@ func TestWriteWebMRefusesAGitTreeAndWrites(t *testing.T) {
 }
 
 func TestVP8SinkClosesWithoutOpening(t *testing.T) {
-	if err := (&vp8Sink{}).Close(); err != nil {
+	var err error
+	noPanic(t, "Close of a sink never opened", func() { err = (&vp8Sink{}).Close() })
+	if err != nil {
 		t.Error(err)
 	}
 }

@@ -27,11 +27,13 @@ const (
 	WebMCPUUsed = 4
 	// DefaultQuality is the VP8 quantizer index held: 1 (best) to 63 (worst).
 	DefaultQuality = 10
-	// MinQuality and MaxQuality bound the --quality flag (RFC 6386 §9.6: a
-	// 7-bit index; the encoder takes 1..63).
+	// MinQuality and MaxQuality bound the --quality flag: avkit's vp8enc takes
+	// 1 to 63 (the bitstream's own quantizer index is 7 bits, RFC 6386 section 9.6).
 	MinQuality, MaxQuality = 1, 63
-	// MBSize is the VP8 macroblock size (RFC 6386 §5): the encoder reads whole
-	// 16x16 macroblocks, so until avkit pads the planes a size must be a multiple.
+	// MBSize is the VP8 macroblock size: the encoder reads whole 16x16
+	// macroblocks, so until avkit pads the planes a size must be a multiple. The
+	// bitstream itself allows other sizes (RFC 6386 section 9.1: the excess is
+	// cropped), which is what the padding will use.
 	MBSize = 16
 )
 

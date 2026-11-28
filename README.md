@@ -507,7 +507,8 @@ WxH` sets the window (320 to 4096 a side, default 1280x720).
 ending in `.webm`; a format that contradicts the extension is refused) rasterises
 the very frames of the animated SVG, each shown for its step's hold, and encodes
 them as VP8 in a WebM with [avkit](https://github.com/go-avkit/avkit)'s pure-Go
-`vp8enc` (RFC 6386; the container follows the
+`vp8enc` (the bitstream is [RFC 6386](https://www.rfc-editor.org/rfc/rfc6386);
+the container follows the
 [WebM guidelines](https://www.webmproject.org/docs/container/)): same scenario,
 same view-model, no second rendering path.
 
@@ -521,9 +522,12 @@ keeps UI text sharp, at a constant quantizer: `--quality 1` (best) to `63`
 The size must be a multiple of 16 on both sides (1280x720 is): the encoder reads
 whole macroblocks, and a size that is not is refused, with a message, until the
 encoder pads its planes. The bytes are the same on every run (a test encodes
-one scenario three times and compares them; the muxer writes no clock); a test also decodes every
-scenario back and asserts at least 40 dB PSNR against the SVG frames (about 48 dB
-measured), and the leak scan reads the WebM's bytes as well.
+one scenario three times and compares them; the muxer writes no clock). A test
+decodes every scenario back, at 640x384 and at the default 1280x720, and asserts at
+least 40 dB PSNR against the SVG frames; another checks the file against the
+guidelines (DocType `webm`, Codec ID `V_VP8`, Cues before the
+first Cluster, a key frame first, carrying the right size); the leak scan reads
+the WebM's bytes as well.
 
 Nothing real is read: accounts, repositories and hosts are made up
 (`acme-demo/*`, "Acme Lab"), the clock is fixed, and the output is byte-for-byte

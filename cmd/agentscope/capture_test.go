@@ -153,7 +153,10 @@ func TestCaptureRefusals(t *testing.T) {
 		"a positional arg": {[]string{"extra"}, "unknown command"},
 		"a tiny window":    {[]string{"--size", "10x10"}, "each 320 to 4096"},
 	} {
-		if msg, err := runCapture(t, c.args...); err == nil || !strings.Contains(err.Error()+msg, c.want) {
+		var msg string
+		var err error
+		noPanic(t, name, func() { msg, err = runCapture(t, c.args...) })
+		if err == nil || !strings.Contains(err.Error()+msg, c.want) {
 			t.Errorf("%s: err = %v, want it to say %q", name, err, c.want)
 		}
 	}

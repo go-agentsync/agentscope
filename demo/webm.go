@@ -30,7 +30,6 @@ const (
 	// MinQuality and MaxQuality bound the --quality flag: avkit's vp8enc takes
 	// 1 to 63 (the bitstream's own quantizer index is 7 bits, RFC 6386 section 9.6).
 	MinQuality, MaxQuality = 1, 63
-	MBSize                 = 16
 )
 
 // Format names.

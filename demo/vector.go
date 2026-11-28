@@ -2,6 +2,7 @@ package demo
 
 import (
 	"sort"
+	"strconv"
 	"unsafe"
 
 	"github.com/go-opentype/opentype"
@@ -19,6 +20,9 @@ import (
 type outlines struct {
 	faces map[faceKey]*opentype.Face
 	texts map[string]bool // every string drawn, so a scan can read what the outlines hide
+	// faceIDs numbers each font so a glyph key stays short and the face data
+	// pointer never reaches the document.
+	faceIDs map[*byte]int
 }
 
 // note records a drawn string.
@@ -46,7 +50,7 @@ type faceKey struct {
 }
 
 func newOutlines() *outlines {
-	return &outlines{faces: map[faceKey]*opentype.Face{}, texts: map[string]bool{}}
+	return &outlines{faces: map[faceKey]*opentype.Face{}, texts: map[string]bool{}, faceIDs: map[*byte]int{}}
 }
 
 func (o *outlines) face(f painter.Face) (*opentype.Face, bool) {
@@ -80,18 +84,39 @@ func (r *vecRecorder) TextFace(x, y int, s string, face painter.Face, ink painte
 		r.Recorder.Text(x, y, s, ink)
 		return
 	}
-	r.Recorder.Text(x, y, s, painter.RGBA{R: ink.R, G: ink.G, B: ink.B, A: 1})
 	scale := float64(face.SizePx()) / float64(fc.Font().UnitsPerEm())
 	base := float64(y + face.Ascent())
 	pen := float64(x)
+	var run []svgrec.Glyph
 	for _, g := range shape.Shape(fc, s, shape.Options{}) {
 		if !g.Invisible {
 			if segs, ok := fc.GlyphOutline(g.GID); ok && len(segs) > 0 {
-				r.Recorder.FillPath(glyphPath(segs, pen+float64(g.XOffset), base-float64(g.YOffset), scale*gscale(g)), ink, painter.NonZero)
+				gs := scale * gscale(g)
+				run = append(run, svgrec.Glyph{
+					Key: r.src.glyphKey(face, g.GID, gs),
+					X:   pen + float64(g.XOffset), Y: base - float64(g.YOffset),
+					Outline: func() *painter.Path { return glyphPath(segs, 0, 0, gs) },
+				})
 			}
 		}
 		pen += float64(g.XAdvance)
 	}
+	// One <symbol> per distinct glyph, one <use> per occurrence; the string stays
+	// in the document as the group's <title> (the accessible name, and what a
+	// leak scan reads).
+	r.Recorder.TextGlyphs(s, run, ink)
+}
+
+// glyphKey names a glyph outline by face, size, glyph and scale, so a recorder
+// builds each outline once however often it is drawn.
+func (o *outlines) glyphKey(f painter.Face, gid opentype.GlyphIndex, scale float64) string {
+	data := f.FontData()
+	id, ok := o.faceIDs[unsafe.SliceData(data)]
+	if !ok {
+		id = len(o.faceIDs)
+		o.faceIDs[unsafe.SliceData(data)] = id
+	}
+	return strconv.Itoa(id) + ":" + strconv.Itoa(f.SizePx()) + ":" + strconv.Itoa(int(gid)) + ":" + strconv.FormatFloat(scale, 'g', -1, 64)
 }
 
 func gscale(g shape.Glyph) float64 {

@@ -91,7 +91,10 @@ var portPoll = 100 * time.Millisecond
 
 func run(ctx context.Context, chrome, url, out string, wait time.Duration, scroll, w, h int, click string, dark bool) error {
 	if in, err := insideGitTree(out); err != nil || in {
-		return fmt.Errorf("refusing to write a capture inside a git work tree (%s): %v", out, err)
+		if err == nil {
+			return fmt.Errorf("refusing to write a capture inside a git work tree (%s)", out)
+		}
+		return fmt.Errorf("refusing to write a capture: cannot tell whether %s is inside a git work tree: %w", out, err)
 	}
 	prof, err := os.MkdirTemp("", "agentscope-capture-")
 	if err != nil {

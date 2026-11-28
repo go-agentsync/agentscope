@@ -340,8 +340,10 @@ func TestWriteWebMRefusesAGitTreeAndWrites(t *testing.T) {
 	if b, err := os.ReadFile(out); err != nil || !bytes.Equal(b, w.Bytes) {
 		t.Errorf("file differs from the render: %v", err)
 	}
-	if _, err := WriteWebM("theme-lang", filepath.Join(out, "b.webm"), alignedOpts, 0); err == nil {
-		t.Error("a directory under a file created")
+	// A failed write returns no result: the caller must not report a file it
+	// does not have (WriteFile's own failure would return the render with it).
+	if got, err := WriteWebM("theme-lang", filepath.Join(out, "b.webm"), alignedOpts, 0); err == nil || got != nil {
+		t.Errorf("a directory under a file created: %v, %v", got, err)
 	}
 }
 

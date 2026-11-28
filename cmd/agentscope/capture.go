@@ -46,11 +46,6 @@ func captureCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if fm == demo.FormatWebM {
-				if err := demo.CheckWebM(width, height, quality); err != nil {
-					return err
-				}
-			}
 			if out == "" {
 				dir, err := demo.DefaultOutDir()
 				if err != nil {

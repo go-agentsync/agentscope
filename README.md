@@ -503,6 +503,28 @@ guardrails), `colors` (account colours: the Colour dialog, two picks, the chart
 repainted) and `theme-lang` (Light to Dark, then English to French). `--size
 WxH` sets the window (320 to 4096 a side, default 1280x720).
 
+**WebM, for the platforms that take video only.** `--format webm` (or an `--out`
+ending in `.webm`; a format that contradicts the extension is refused) rasterises
+the very frames of the animated SVG, each shown for its step's hold, and encodes
+them as VP8 in a WebM with [avkit](https://github.com/go-avkit/avkit)'s pure-Go
+`vp8enc` (RFC 6386; the container follows the
+[WebM guidelines](https://www.webmproject.org/docs/container/)): same scenario,
+same view-model, no second rendering path.
+
+```sh
+agentscope capture --scenario overview --format webm --out overview.webm
+```
+
+The encoder runs at its slow preset (`CPUUsed` 4, screen-content mode), which
+keeps UI text sharp, at a constant quantizer: `--quality 1` (best) to `63`
+(worst), default 10. A 1280x720 capture is 230 to 410 KB and takes 0.5 to 0.8 s.
+The size must be a multiple of 16 on both sides (1280x720 is): the encoder reads
+whole macroblocks, and a size that is not is refused, with a message, until the
+encoder pads its planes. The bytes are the same on every run (a test encodes
+one scenario three times and compares them; the muxer writes no clock); a test also decodes every
+scenario back and asserts at least 40 dB PSNR against the SVG frames (about 48 dB
+measured), and the leak scan reads the WebM's bytes as well.
+
 Nothing real is read: accounts, repositories and hosts are made up
 (`acme-demo/*`, "Acme Lab"), the clock is fixed, and the output is byte-for-byte
 the same on every run. The default `--out` is under the user config directory

@@ -111,11 +111,8 @@ func InsideGitTree(p string) (bool, error) {
 // Write renders the scenario and writes it to out, refusing a path inside a git
 // work tree. The directory is created when missing.
 func Write(name, out string, o Options) (*Result, error) {
-	if in, err := InsideGitTree(out); err != nil || in {
-		if err == nil {
-			return nil, fmt.Errorf("refusing to write a capture inside a git work tree (%s)", out)
-		}
-		return nil, fmt.Errorf("refusing to write a capture: cannot tell whether %s is inside a git work tree: %w", out, err)
+	if err := refuseGitTree(out); err != nil {
+		return nil, err
 	}
 	r, err := Render(name, o)
 	if err != nil {

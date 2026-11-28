@@ -4,15 +4,15 @@ go 1.27.4
 
 require (
 	github.com/coder/websocket v1.8.15
-	github.com/go-agentsync/agentsync v0.9.0
-	github.com/go-opentype/opentype v0.20.0
+	github.com/go-agentsync/agentsync v0.14.1
+	github.com/go-opentype/opentype v0.26.0
 	github.com/go-opentype/shape v0.7.0
 	github.com/go-widgets/mvvm v0.15.0
 	github.com/go-widgets/mvvmtk v0.16.0
 	github.com/go-widgets/painter v0.22.0
 	github.com/go-widgets/svg v0.9.0
 	github.com/go-widgets/toolkit v0.409.0
-	github.com/grpc-transports/websocket v0.2.0
+	github.com/grpc-transports/websocket v0.4.0
 	github.com/spf13/cobra v1.10.2
 	google.golang.org/grpc v1.85.0
 )

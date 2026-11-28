@@ -6,8 +6,8 @@ github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6N
 github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 h1:2tV76y6Q9BB+NEBasnqvs7e49aEBFI8ejC89PSnWH+4=
 github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707/go.mod h1:qssHWj60/X5sZFNxpG4HBPDHVqxNm4DfnCKgrbZOT+s=
 github.com/dsnet/golib v0.0.0-20171103203638-1ea166775780/go.mod h1:Lj+Z9rebOhdfkVLjJ8T6VcRQv3SXugXy999NBtR9aFY=
-github.com/go-agentsync/agentsync v0.9.0 h1:f9OFW8/FgIn6sqO/AUmbstXVUYAj+QXOcKUqWQTeFmw=
-github.com/go-agentsync/agentsync v0.9.0/go.mod h1:24ud2lR3Q6ePLAhwLpc+2wZsM6mWPl3PK/sOhkKPutI=
+github.com/go-agentsync/agentsync v0.14.1 h1:v5T06ocR1uhK9DF1KBgfSV+weyHVZVt5lpQi1HZSjLI=
+github.com/go-agentsync/agentsync v0.14.1/go.mod h1:vv79pVwN6m46ILjk+tKDdHLSRjz59NsCnrmIsP2tp5E=
 github.com/go-crdt/crdt v0.59.0 h1:2gp9+qVo6zN4Y5A6fUKkHufZjJGUJQZ2R4xecDrO0xQ=
 github.com/go-crdt/crdt v0.59.0/go.mod h1:kHlReXEoryOyNeoSZv7GizHHuSZ+DmVi2AuGIRb0jNc=
 github.com/go-gfx/gfx v0.42.0 h1:6z6RlJTJrfcnJTzd/T2yZ+fAKcs6356GYq9xw1YC0hg=
@@ -18,8 +18,8 @@ github.com/go-images/images v0.3.0 h1:uj0bNC9HTvMZF4HvHf5XNVlXYB6zAr8uAdbieTMzuv
 github.com/go-images/images v0.3.0/go.mod h1:ep6TePdcpU6ESk2yHuapG9ybfznNsxgHOFOeRKsinZ8=
 github.com/go-opentype/fonts v0.14.0 h1:WHw7k9gkHT1pu9B2yyvd0FWyQqn/4NKFQoKhvMYt3Mo=
 github.com/go-opentype/fonts v0.14.0/go.mod h1:od2QcmdpKo7QCqo6Jb16y4GULk+h2Hhfq6x3xfvn62Q=
-github.com/go-opentype/opentype v0.20.0 h1:5YePvRwcnfseDSdP4oDHp7uBDtPxQd1I3Q2ZbOxFLfs=
-github.com/go-opentype/opentype v0.20.0/go.mod h1:cyTZyPcwVFR4MTHnCj7a6tk2tGIB6deakpefu/apDjg=
+github.com/go-opentype/opentype v0.26.0 h1:ayYx9s9MCB6GetjsJEIxCu9mWx2pjksrL+l8jE7M5lY=
+github.com/go-opentype/opentype v0.26.0/go.mod h1:xzFnB0oUWXuU1AxQl0CgtQpV8iWY7f5/RRGc9diiBZs=
 github.com/go-opentype/shape v0.7.0 h1:hXUkI4xdpkzq31ZYf/6zfkDAgRLZnTjI1q8DWLu5MGQ=
 github.com/go-opentype/shape v0.7.0/go.mod h1:n8pMQ/MH4Oscxwd9J0B7RiZ5gKlD0yagRQKYsAmJ9Rw=
 github.com/go-richdoc/richdoc v0.7.0 h1:vhHypa0y26ulrOz6Aw1RIzeLjSMsFJyU1SzK5jd90lg=
@@ -49,8 +49,8 @@ github.com/golang/protobuf v1.5.4/go.mod h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6
 github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
 github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
-github.com/grpc-transports/websocket v0.2.0 h1:n4lN066PPcVTvTfLdwa84gfNiAzvS9k4SSQ1yWuG3+g=
-github.com/grpc-transports/websocket v0.2.0/go.mod h1:2z7Qy11qgPaGDfqzImOt0iyLwH0wjfsvaiidCIIpzgg=
+github.com/grpc-transports/websocket v0.4.0 h1:P/PyEwzEOQRooWw4HNGEk/D8bkuoHJ/kwVw8EaPspPg=
+github.com/grpc-transports/websocket v0.4.0/go.mod h1:mgExQGqHkZm7empGD6W/+/Va58EaptwEqUpOR2DmnYY=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/klauspost/compress v1.4.1/go.mod h1:RyIbtBH6LamlWaDj8nUwkbUhJ87Yi3uG0guNDohfE1A=

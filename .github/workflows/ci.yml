@@ -63,7 +63,7 @@ jobs:
           M=github.com/go-agentsync/agentscope
           PKGS="$M/accounts,$M/collect,$M/guard,$M/model,$M/quota,$M/serve,$M/usage,$M/webui,$M/wire,$M/cmd/agentscope"
           go test -timeout 10m -coverpkg="$PKGS" -coverprofile=cover.out ./...
-          go install github.com/go-fleettools/fleettools/cmd/covblocks@v0.157.0
+          go install github.com/go-fleettools/fleettools/cmd/covblocks@v0.182.2
           "$(go env GOPATH)/bin/covblocks" --max 0 cover.out
       # The machine this runs on is a Mac and one lane is Windows: compile them.
       - name: vet for darwin on arm64
@@ -106,7 +106,7 @@ jobs:
         run: |
           set -eu
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          go install github.com/go-fleettools/fleettools/cmd/vulngate@v0.18.1
+          go install github.com/go-fleettools/fleettools/cmd/vulngate@v0.182.2
           BIN="$(go env GOPATH)/bin"
           "$BIN/govulncheck" -format json ./... > "$RUNNER_TEMP/vuln.json" || true
           test -s "$RUNNER_TEMP/vuln.json" || { echo "::error::govulncheck wrote nothing at all"; exit 1; }
